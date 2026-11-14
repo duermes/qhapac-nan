@@ -146,6 +146,77 @@ def evaluate_pnr(points: list[dict], profile: str, available: float | None = Non
     return result
 
 
+def assess_route(points: list[dict], profile: str, inventory: dict[str, tuple[float, float]],
+                 reserve_fractions: dict[str, float], speed_mps: float | None = None,
+                 return_prefix: list[dict] | None = None) -> tuple[list[dict], dict]:
+    """Evaluate forward and reverse consumption on one path and insert its exact PNR."""
+    resource = PNR_DEFAULTS[profile]["resource"]
+    segments = route_segments(points)
+    outward = {key: 0.0 for key in inventory}
+    home = route_metrics(list(reversed(return_prefix or [])), profile, speed_mps)["resources"]
+    reverse = {key: home.get(key, 0.0) for key in inventory}
+    reserve = {key: capacity * reserve_fractions[key] for key, (_, capacity) in inventory.items()}
+    budget = {key: available - reserve[key] for key, (available, _) in inventory.items()}
+    crossing = (0, 0.0, min(budget, key=lambda k: budget[k] - reverse[k])) if any(
+        reverse[key] > budget[key] for key in inventory) else None
+    for i, (distance, grade) in enumerate(segments):
+        fwd = segment_cost(profile, distance, grade, speed_mps)
+        back = segment_cost(profile, distance, -grade, speed_mps)
+        fractions = []
+        for key in inventory:
+            cost = fwd[key] + back[key]
+            margin = budget[key] - outward[key] - reverse[key]
+            if cost > 0 and cost > margin:
+                fractions.append((max(0.0, margin / cost), key))
+            outward[key] += fwd[key]
+            reverse[key] += back[key]
+        if crossing is None and fractions:
+            fraction, limiting = min(fractions)
+            crossing = (i, fraction, limiting)
+
+    one_way = {key: budget[key] - outward[key] for key in inventory}
+    round_trip = {key: one_way[key] - reverse[key] for key in inventory}
+    limiting = crossing[2] if crossing else min(inventory, key=lambda key: round_trip[key] / inventory[key][1])
+    if any(value < -1e-9 for value in one_way.values()):
+        limiting = min(inventory, key=lambda key: one_way[key] / inventory[key][1])
+        status = "infeasible"
+    else:
+        status = "pnr_exceeded" if crossing else "round_trip_safe"
+
+    distances = [0.0]
+    for distance, _ in segments:
+        distances.append(distances[-1] + distance)
+    result_points = [{**point, "distance_m": distance} for point, distance in zip(points, distances)]
+    index = None
+    if crossing:
+        i, fraction, _ = crossing
+        index = i
+        if fraction > 0 and i + 1 < len(result_points):
+            a, b = result_points[i:i + 2]
+            fields = ("lat", "lon", "elevation_m", "distance_m")
+            marker = {**a, **{key: a[key] + (b[key] - a[key]) * fraction for key in fields}}
+            index += 1
+            result_points.insert(index, marker)
+
+    pnr = {
+        "resource": resource, "limiting_resource": limiting, "capacity": inventory[resource][1],
+        "available": inventory[resource][0], "reserve": reserve[resource],
+        "status": status, "show_pnr": index is not None, "pnr_index": index,
+        "pnr_point": ({key: result_points[index][key] for key in ("lat", "lon", "elevation_m", "distance_m")}
+                      if index is not None and result_points else None),
+        "outbound_total": outward[resource], "return_total": reverse[resource],
+        "round_trip_margin": round_trip[limiting], "one_way_margin": one_way[limiting],
+        "asymmetry": reverse[resource] - outward[resource],
+        "resource_margins": {key: {"available": inventory[key][0], "reserve": reserve[key],
+                                   "outbound": outward[key], "return": reverse[key],
+                                   "one_way_margin": one_way[key], "round_trip_margin": round_trip[key]}
+                             for key in inventory},
+        "segments": [{"from": i, "to": i + 1, "state": "safe" if index is None or i < index else "no_return"}
+                     for i in range(len(result_points) - 1)],
+    }
+    return result_points, pnr
+
+
 @dataclass
 class ResourceLedger:
     """Cumulative consumable account for a mobile asset."""

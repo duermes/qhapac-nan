@@ -15,20 +15,27 @@ export function initTraverses(c) {
     $("#traverse-toggle").setAttribute("aria-expanded", String(!el.classList.contains("collapsed")));
   });
   $("#traverse-list").addEventListener("click", onClick);
+  $("#traverse-list").addEventListener("keydown", (event) => {
+    if (event.target.matches("[data-tid]") && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      event.target.click();
+      $("#traverse-list .trav.active")?.focus();
+    }
+  });
   $("#traverse-list").addEventListener("dblclick", (e) => {
     const card = e.target.closest("[data-tid]");
     if (card && e.target.closest(".trav-name")) startRename(card.dataset.tid);
   });
   ctx.on("session", render);
   ctx.on("traverses", render);
-  ctx.on("first-run", () => { if (!ctx.cur.traverses.length) addTraverse(true); });
+
 }
 
 export function addTraverse(silent = false) {
   const s = ctx.cur;
   const n = s.traverses.length + 1;
   const t = { id: `T${Date.now().toString(36)}${n}`, name: `Travesía ${String(n).padStart(2, "0")}`, origin: null, destination: null,
-    waypoints: [], result: null, variant: "balanced", saved: false, visible: true, status: "draft" };
+    waypoints: [], params: {}, result: null, variant: "balanced", saved: false, visible: true, status: "draft" };
   s.traverses.push(t);
   s.activeTraverse = t.id;
   persist();
@@ -89,8 +96,8 @@ export function render() {
   $("#traverse-list").innerHTML = n ? s.traverses.map((t) => {
     const v = t.result?.variants?.find((x) => x.variant === t.variant);
     const status = t.status === "infeasible" ? `<span style="color:var(--danger)">Inviable</span>`
-      : v ? `${fmt.m(v.metrics.distance_m)} · ${fmt.dur(v.metrics.duration_s)}${t.saved ? " · guardada" : ""}` : "Sin calcular";
-    return `<article class="trav ${t.id === s.activeTraverse ? "active" : ""}" data-tid="${t.id}">
+      : v ? `${fmt.m(v.metrics.distance_m)} · ${fmt.dur(v.metrics.duration_s)}${t.saved ? " · guardada" : ""}` : t.result?.static_origin ? fmt.m(t.result.direct.distance_m) : "Sin calcular";
+    return `<article class="trav ${t.id === s.activeTraverse ? "active" : ""}" data-tid="${t.id}" tabindex="0" aria-current="${t.id === s.activeTraverse}">
       <div class="trav-head"><span class="dot"></span><span class="trav-name" title="Doble clic para renombrar">${esc(t.name)}</span>
         <button class="btn btn-icon" data-act="rename" aria-label="Renombrar ${esc(t.name)}">${icon("edit")}</button>
         <button class="btn btn-icon" data-act="eye" aria-pressed="${t.visible !== false}" aria-label="Mostrar u ocultar ${esc(t.name)}">${icon(t.visible === false ? "eyeoff" : "eye")}</button>

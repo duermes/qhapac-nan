@@ -1,5 +1,5 @@
 """REF-108..112."""
-from conftest import BASE, needs_mola, read
+from conftest import ROVER, EVA, BASE, needs_mola, read
 from khipu.resources import ResourceLedger, evaluate_pnr
 
 
@@ -38,9 +38,9 @@ def test_pnr_asymmetric_and_consistent_when_exceeding_budget():
 
 @needs_mola
 def test_cross_map_impossible_route_is_blocked(client):
-    r = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 30.0, "lon": 85.0}})
+    r = client.post("/api/route", json={"origin": ROVER, "destination": {"lat": 30.0, "lon": 85.0}})
     assert r.status_code == 422 and r.json()["reason"] == "destino_outside"
-    e = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 21.6, "lon": 75.4}, "asset_id": "EVA_01"})
+    e = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 21.6, "lon": 75.4}, "asset_id": "EVA_01"})
     assert e.status_code == 422 and e.json()["reason"] == "walkback_exceeded"
 
 

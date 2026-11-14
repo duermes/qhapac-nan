@@ -17,7 +17,7 @@ function walk(seconds, slope = 0, dt = 1 / 60) {
 function controller() {
   const terrain = {
     getSmoothHeightAt: () => 0,
-    colliders: [], gridSize: 600, baseCoord: { x: -65, z: -60 },
+    colliders: [], pathBlocked: () => false, gridSize: 600, baseCoord: { x: -65, z: -60 },
     checkProximityHazards: () => ({ hasHazard: false })
   };
   const suit = { update() {}, updateDistanceToBase() {} };

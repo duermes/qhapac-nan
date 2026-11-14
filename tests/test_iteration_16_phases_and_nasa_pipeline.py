@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from conftest import BASE, DELTA, needs_mola
+from conftest import ROVER, BASE, DELTA, needs_mola
 from khipu import exporters
 from khipu_data.nasa_client import NasaClient
 from khipu_data.pds3 import PDS3Error, extract_subgrid, open_mola, parse_label
@@ -87,18 +87,18 @@ def test_nasa_data_client_weather(tmp_path, monkeypatch):
 
 @needs_mola
 def test_dynamic_continuous_replan_nominal(client):
-    plan = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "variants": False}).json()
-    r = client.post("/api/route/dynamic_replan", json={"current": BASE, "destination": DELTA, "route_points": plan["variants"][0]["points"],
+    plan = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "variants": False}).json()
+    r = client.post("/api/route/dynamic_replan", json={"current": ROVER, "destination": DELTA, "route_points": plan["variants"][0]["points"],
                                                        "obstacles": [{"lat": 17.0, "lon": 75.0, "radius_m": 300}]}).json()
     assert r["status"] == "nominal" and r["replanned"] is False
 
 
 @needs_mola
 def test_dynamic_continuous_replan_compromised_evasion(client):
-    plan = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "variants": False}).json()
+    plan = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "variants": False}).json()
     pts = plan["variants"][0]["points"]
     mid = pts[len(pts) // 2]
-    r = client.post("/api/route/dynamic_replan", json={"current": BASE, "destination": DELTA, "route_points": pts,
+    r = client.post("/api/route/dynamic_replan", json={"current": ROVER, "destination": DELTA, "route_points": pts,
                                                        "obstacles": [{"lat": mid["lat"], "lon": mid["lon"], "radius_m": 600}]}).json()
     assert r["status"] == "compromised" and r["evasion_ok"]
 

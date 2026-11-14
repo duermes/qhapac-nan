@@ -22,8 +22,8 @@ export async function initDecks(c) {
   ctx.decks = { layers, legend, metrics, risk, nearby, closeAll: () => [layers, legend, metrics, risk, nearby].forEach((d) => d.close()) };
   $("#legend-btn").addEventListener("click", () => legend.toggle());
   legend.addEventListener("deck:open", renderLegend);
-  metrics.openFor = (t) => { renderMetrics(t); metrics.open(); };
-  nearby.openFor = (v) => { nearby.variant = v; renderNearby(); nearby.open(); };
+  metrics.openFor = (t) => { if (ctx.cur.mode === "plan" && t?.result && !t.result.static_origin) { renderMetrics(t); metrics.open(); } };
+  nearby.openFor = (v) => { if (ctx.cur.mode === "plan" && v) { nearby.variant = v; renderNearby(); nearby.open(); } };
   layers.addEventListener("deck:open", () => renderLayers());
 
   try {
@@ -39,18 +39,29 @@ export async function initDecks(c) {
 }
 
 // ------------------------------------------------------------------ layers
+const CONTROLS = {
+  opacity: ["Transparencia · opacidad", 0, 1, 0.05, 0.6],
+  ltst_h: ["Hora solar local (h)", 0, 24, 0.25, 13],
+  tau: ["Profundidad óptica del polvo (τ)", 0, 10, 0.05, 0.5],
+  alpha: ["Peso de ciencia (α)", 0, 1, 0.05, 0.5],
+  max_slope_deg: ["Pendiente límite (°)", 1, 45, 0.5, 20],
+  receiver_height_m: ["Altura del receptor (m)", 0.1, 20, 0.1, 2],
+  link_margin_offset_db: ["Pérdida adicional del enlace (dB)", -40, 40, 0.5, 0],
+  walkback_m: ["Alcance desde la base (m)", 100, 50000, 100, 2000],
+  helio_au: ["Distancia al Sol (UA)", 1.3, 1.7, 0.01, 1.52],
+  science_radius_scale: ["Radio de influencia científica (factor)", 0.1, 5, 0.1, 1],
+  hazard_weight: ["Peso de zonas de peligro", 0, 5, 0.1, 1],
+};
+
 function layerParams(id) {
-  const s = ctx.cur;
   const d = ctx.catalog[id];
-  const L = s.layers[id] || {};
-  const p = {};
-  if (d?.temporal) {
-    if (L.realtime === false) { p.ltst_h = L.ltst_h ?? 13; } else p.realtime = true;
-    p.tau = L.tau ?? s.params.tau ?? 0.5;
+  const layer = ctx.cur.layers[id];
+  const params = {};
+  for (const key of d.controls || []) {
+    if (key === "ltst_h" && layer.realtime !== false) params.realtime = true;
+    else if (layer[key] != null) params[key] = layer[key];
   }
-  if (id === "science_vs_risk") p.alpha = L.alpha ?? 0.5;
-  if (id === "hazard" || id === "costmap") p.profile = L.profile || "rover";
-  return p;
+  return params;
 }
 
 async function ensureLayer(id) {
@@ -64,6 +75,7 @@ async function ensureLayer(id) {
   if (!res.available) { toast(`${d.name}: ${res.reason}`, "warn", 5000); L.visible = false; return; }
   const lo = d.range_hint?.[0], hi = d.range_hint?.[1];
   ctx.layerCanvases[key] = renderLayer(res.decoded, d.colormap, id, lo, hi);
+  if (L.key !== key) return;
   L.stats = res.stats;
   L.paramsUsed = res.params;
   L.simulation = res.simulation;
@@ -81,7 +93,11 @@ export async function setLayer(id, visible) {
   if (!d.available) { toast(`${d.name}: ${d.unavailable_reason}`, "warn", 6000); return; }
   const L = (s.layers[id] ||= { visible: false, opacity: LAYER_DEFAULT_OPACITY, realtime: true });
   L.visible = visible ?? !L.visible;
-  if (L.visible) { s.activeLayer = id; await ensureLayer(id); }
+  if (L.visible) {
+    s.activeLayer = id;
+    try { await ensureLayer(id); }
+    catch (error) { L.visible = false; toast(error.message, "warn"); }
+  }
   else if (s.activeLayer === id) s.activeLayer = Object.keys(s.layers).find((k) => s.layers[k].visible) || null;
   persist();
   refreshScene();
@@ -92,63 +108,99 @@ export async function setLayer(id, visible) {
 async function updateLayerParam(id, patch) {
   const L = ctx.cur.layers[id];
   Object.assign(L, patch);
-  if (L.visible) await ensureLayer(id);
+  if (L.visible && !("opacity" in patch)) {
+    try { await ensureLayer(id); } catch (error) { toast(error.message, "warn"); }
+  }
   persist();
   refreshScene();
   renderLayers();
 }
 
 function resetLayer(id) {
-  // individual reset: opacity + temporal parameters back to real time
-  updateLayerParam(id, { opacity: LAYER_DEFAULT_OPACITY, realtime: true, ltst_h: undefined, tau: 0.5, alpha: 0.5 });
-  toast(`${ctx.catalog[id].name}: restablecida`, "", 1500);
+  const layer = ctx.cur.layers[id];
+  for (const key of ctx.catalog[id].controls || []) delete layer[key];
+  delete layer.realtime;
+  updateLayerParam(id, { opacity: LAYER_DEFAULT_OPACITY, realtime: true });
+  if (layer.visible) ensureLayer(id).then(() => { refreshScene(); renderLayers(); }).catch((e) => toast(e.message, "warn"));
 }
 
 export function restoreRealtime() {
-  const s = ctx.cur;
-  Object.entries(s.layers).forEach(([id, L]) => { if (ctx.catalog[id]?.temporal) { L.realtime = true; delete L.ltst_h; } });
+  Object.entries(ctx.cur.layers).forEach(([id, layer]) => {
+    if (ctx.catalog[id]?.temporal) { layer.realtime = true; delete layer.ltst_h; }
+  });
+  persist();
   restoreLayers().then(renderLayers);
   toast("Capas temporales restauradas a tiempo real", "safe", 2000);
+}
+
+function layerControl(def, layer, key) {
+  const id = `layer-${def.id}-${key}`;
+  if (key === "profile") {
+    return `<label for="${id}">Perfil de movilidad</label><select id="${id}" class="select" data-param="profile">
+      <option value="rover">Rover</option><option value="astronaut" ${layer.profile === "astronaut" ? "selected" : ""}>Astronauta</option></select>`;
+  }
+  const [label, min, max, step, fallback] = CONTROLS[key];
+  const nominal = key === "walkback_m" && def.id === "survival_rover" ? 15000
+    : key === "max_slope_deg" && (layer.profile === "astronaut" || def.id === "survival_astronaut") ? 25 : fallback;
+  const value = layer[key] ?? (key === "ltst_h" ? ctx.realtime?.ltst_h ?? nominal : nominal);
+  return `<label for="${id}">${label}${key === "ltst_h" && layer.realtime !== false ? " · tiempo real" : ""}</label>
+    <div class="numeric-pair">
+      <input class="range" type="range" data-param="${key}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label} (deslizador)">
+      <input class="input mono" type="number" id="${id}" data-param="${key}" min="${min}" max="${max}" step="any" value="${value}" required>
+    </div>`;
 }
 
 function renderLayers() {
   const deck = ctx.decks.layers;
   if (deck.hidden) return;
-  const s = ctx.cur;
-  const cats = {};
-  Object.values(ctx.catalog).forEach((d) => { (cats[d.category] ||= []).push(d); });
-  const anyTemporal = Object.entries(s.layers).some(([id, L]) => L.visible && ctx.catalog[id]?.temporal && L.realtime === false);
-  deck.body.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
-      <span class="badge ${s.eyes.analyze ? "live" : "unavailable"}">${s.eyes.analyze ? "visibles" : "ocultas (ojo)"}</span>
+  const session = ctx.cur;
+  const cats = Object.groupBy(Object.values(ctx.catalog), (layer) => layer.category);
+  const anyTemporal = Object.entries(session.layers).some(([id, layer]) => ctx.catalog[id]?.temporal && layer.realtime === false);
+  deck.body.innerHTML = `<div class="layer-top">
+      <span class="badge ${session.eyes.analyze ? "live" : "unavailable"}">${session.eyes.analyze ? "Capas habilitadas" : "Capas ocultas en el mapa"}</span>
       <button class="btn" id="rt-restore" ${anyTemporal ? "" : "disabled"}>${icon("reset")} Tiempo real</button></div>`
-    + Object.entries(cats).map(([cat, list]) => `<div class="kicker" style="margin-top:8px">${esc(cat)}</div>` + list.map((d) => {
-      const L = s.layers[d.id] || {};
-      const on = !!L.visible;
-      const ramp = LEGEND_STOPS(d.colormap).join(",");
-      return `<div class="layer-row" data-layer="${d.id}">
-        <div class="layer-top"><label class="switch"><input type="checkbox" ${on ? "checked" : ""} ${d.available ? "" : "disabled"} data-toggle="${d.id}" aria-label="Capa ${esc(d.name)}"><span class="track"></span></label>
-          <span class="name">${esc(d.name)}</span>${provBadge(d.provenance)}</div>
-        <div class="layer-meta"><span class="mono">${esc(d.units)}</span>${d.temporal ? '<span class="badge model">temporal</span>' : ""}${d.available ? "" : `<span class="dim">${esc(d.unavailable_reason)}</span>`}</div>
-        ${on ? `<div class="legend-ramp" style="background:linear-gradient(90deg,${ramp})"></div>
-          <div class="layer-meta mono"><span>${fmt.num(L.stats?.min ?? d.range_hint?.[0], 1)}</span><span style="flex:1"></span><span>${fmt.num(L.stats?.max ?? d.range_hint?.[1], 1)} ${esc(d.units)}</span></div>
-          <div class="layer-ctrl"><input type="range" class="range" min="0" max="1" step="0.05" value="${L.opacity}" data-opacity="${d.id}" aria-label="Opacidad ${esc(d.name)}">
-            <button class="btn" data-reset="${d.id}" title="Restablecer esta capa">${icon("reset")}</button></div>
-          ${d.temporal ? `<div class="layer-ctrl"><label class="label" style="margin:0">Hora solar ${L.realtime === false ? `<b class="mono">${(L.ltst_h ?? 13).toFixed(1)} h</b>` : '<b style="color:var(--safe)">tiempo real</b>'}</label><span></span>
-             <input type="range" class="range" min="0" max="24" step="0.5" value="${L.ltst_h ?? ctx.realtime?.ltst_h ?? 13}" data-hour="${d.id}" aria-label="Hora solar ${esc(d.name)}"><span></span>
-             <label class="label" style="margin:0">Polvo τ <b class="mono">${(L.tau ?? 0.5).toFixed(2)}</b></label><span></span>
-             <input type="range" class="range" min="0.1" max="3" step="0.1" value="${L.tau ?? 0.5}" data-tau="${d.id}" aria-label="Opacidad de polvo ${esc(d.name)}"><span></span></div>` : ""}
-          ${d.id === "science_vs_risk" ? `<div class="layer-ctrl"><label class="label" style="margin:0">α ciencia ↔ riesgo <b class="mono">${(L.alpha ?? 0.5).toFixed(2)}</b></label><span></span>
-             <input type="range" class="range" min="0" max="1" step="0.05" value="${L.alpha ?? 0.5}" data-alpha="${d.id}" aria-label="Ciencia frente a riesgo"><span></span></div>` : ""}
-          ${L.simulation ? '<div class="badge sim" style="margin-top:4px">simulación activa</div>' : ""}` : ""}
+    + Object.entries(cats).map(([category, defs]) => `<div class="kicker layer-category">${esc(category)}</div>` + defs.map((def) => {
+      const layer = session.layers[def.id] || {};
+      const ramp = LEGEND_STOPS(def.colormap).join(",");
+      const inputs = (def.inputs || []).map((input) => input === "Topografía MOLA" ? "NASA · MOLA" : input);
+      const mixed = inputs.some((input) => ["Zonas de exclusión", "Objetivos científicos", "Base y alcance EVA",
+        "Base y alcance del rover", "Antena UHF"].includes(input));
+      return `<div class="layer-row" data-layer="${def.id}">
+        <div class="layer-top"><span class="name">${esc(def.name)}</span>
+          <button class="btn btn-icon" data-toggle="${def.id}" aria-pressed="${!!layer.visible}" aria-label="Mostrar u ocultar ${esc(def.name)}" ${def.available ? "" : "disabled"}>${icon(layer.visible ? "eye" : "eyeoff")}</button></div>
+        <p class="layer-inputs" title="${mixed ? "Incluye datos del escenario sintético" : esc(def.description)}">${esc(inputs.join(" + "))}</p>
+        ${layer.visible ? `<div class="legend-ramp" style="background:linear-gradient(90deg,${ramp})"></div>
+          <div class="layer-meta mono"><span>${fmt.num(layer.stats?.min ?? def.range_hint?.[0], 1)}</span>
+          <span>${fmt.num(layer.stats?.max ?? def.range_hint?.[1], 1)} ${esc(def.units)}</span></div>` : ""}
+        ${def.available ? `<details class="layer-settings" ${layer.expanded ? "open" : ""}>
+          <summary>Parámetros</summary>
+          ${["opacity", ...(def.controls || [])].map((key) => layerControl(def, layer, key)).join("")}
+          <button class="btn" data-reset="${def.id}">${icon("reset")} Restablecer</button>
+          <p class="dim small">${esc(def.description)}${mixed ? " Incluye datos del escenario sintético." : ""}</p>
+          ${layer.simulation ? '<span class="badge sim">Contingencia activa</span>' : ""}
+          </details>` : `<p class="small dim">${esc(def.unavailable_reason)}</p>`}
       </div>`;
     }).join("")).join("");
-  deck.body.querySelector("#rt-restore")?.addEventListener("click", restoreRealtime);
-  $$("[data-toggle]", deck.body).forEach((i) => i.addEventListener("change", () => setLayer(i.dataset.toggle, i.checked)));
-  $$("[data-opacity]", deck.body).forEach((i) => i.addEventListener("input", () => { s.layers[i.dataset.opacity].opacity = +i.value; refreshScene(); persist(); }));
-  $$("[data-reset]", deck.body).forEach((b) => b.addEventListener("click", () => resetLayer(b.dataset.reset)));
-  $$("[data-hour]", deck.body).forEach((i) => i.addEventListener("change", () => updateLayerParam(i.dataset.hour, { realtime: false, ltst_h: +i.value })));
-  $$("[data-tau]", deck.body).forEach((i) => i.addEventListener("change", () => updateLayerParam(i.dataset.tau, { tau: +i.value })));
-  $$("[data-alpha]", deck.body).forEach((i) => i.addEventListener("change", () => updateLayerParam(i.dataset.alpha, { alpha: +i.value })));
+  $("#rt-restore", deck.body)?.addEventListener("click", restoreRealtime);
+  $$("[data-layer]", deck.body).forEach((row) => {
+    const id = row.dataset.layer;
+    const toggle = row.querySelector("[data-toggle]");
+    toggle.addEventListener("click", () => setLayer(id));
+    const options = row.querySelector("details");
+    if (!options) return;
+    options.addEventListener("toggle", () => {
+      const layer = (session.layers[id] ||= { visible: false, opacity: LAYER_DEFAULT_OPACITY });
+      if (!!layer.expanded !== options.open) { layer.expanded = options.open; persist(); }
+    });
+    options.addEventListener("change", (event) => {
+      const input = event.target;
+      const key = input.dataset.param;
+      if (!key || !input.reportValidity()) return;
+      const value = key === "profile" ? input.value : input.valueAsNumber;
+      updateLayerParam(id, { [key]: value, ...(key === "ltst_h" ? { realtime: false } : {}) });
+    });
+    row.querySelector("[data-reset]").addEventListener("click", () => resetLayer(id));
+  });
 }
 
 // ------------------------------------------------------------------ legend
@@ -156,19 +208,17 @@ function renderLegend() {
   const deck = ctx.decks.legend;
   if (deck.hidden) return;
   const s = ctx.cur;
-  const kinds = [...new Set((ctx.entities || []).map((e) => e.kind))];
+  const kinds = [...new Set((ctx.entities || []).map((e) => e.kind))].filter((kind) => kind !== "hazard");
   const hidden = new Set(s.hidden);
-  const visibleLayers = Object.entries(s.layers).filter(([, L]) => L.visible).map(([id]) => ctx.catalog[id]).filter(Boolean);
+  const visibleLayers = Object.entries(s.layers).filter(([, L]) => s.eyes.analyze && L.visible).map(([id]) => ctx.catalog[id]).filter(Boolean);
   deck.body.innerHTML = `<div class="kicker">Elementos (filtro de visibilidad)</div>`
     + kinds.map((k) => { const r = ASSET_REGISTRY[k] || ASSET_REGISTRY.waypoint; return `<div class="legend-item"><span class="sw" style="border-color:${r.color};border-radius:${["poi", "sample", "rover", "astronaut", "antenna"].includes(k) ? "50%" : "0"}"></span>
       <label for="lg-${k}">${esc(r.label)}</label><label class="switch"><input id="lg-${k}" type="checkbox" data-kind="${k}" ${hidden.has(k) ? "" : "checked"}><span class="track"></span></label></div>`; }).join("")
     + `<div class="legend-item"><span class="sw" style="border-color:var(--danger);border-style:dashed;border-radius:50%"></span><label for="lg-hazard">Zonas de exclusión (sintéticas)</label><label class="switch"><input id="lg-hazard" type="checkbox" data-kind="hazard" ${hidden.has("hazard") ? "" : "checked"}><span class="track"></span></label></div>`
     + `<hr class="joint"/><div class="kicker">Rutas</div>
-      <div class="legend-item"><span class="sw" style="border-color:var(--route-calc);height:3px;border-width:2px"></span>Ruta calculada (Khipu)</div>
       <div class="legend-item"><span class="sw" style="border-color:var(--route-direct);border-style:dashed;height:3px"></span>Ruta directa (euclídea)</div>
-      <div class="legend-item"><span class="sw" style="border-color:var(--route-safe);height:3px"></span>Segmento seguro</div>
-      <div class="legend-item"><span class="sw" style="border-color:var(--route-caution);height:3px"></span>Precaución (cerca del PNR)</div>
-      <div class="legend-item"><span class="sw" style="border-color:var(--route-noreturn);height:3px"></span>Más allá del punto de no retorno</div>`
+      <div class="legend-item"><span class="sw" style="border-color:#65d8ff;height:3px"></span>Retorno con reserva</div>
+      <div class="legend-item"><span class="sw" style="border-color:#ff8c36;height:3px"></span>Retorno no garantizado</div>`
     + `<hr class="joint"/><div class="kicker">Capas visibles</div>`
     + (visibleLayers.length ? visibleLayers.map((d) => `<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;gap:6px;font-size:12px"><span>${esc(d.name)}</span>${provBadge(d.provenance)}</div>
         <div class="legend-ramp" style="background:linear-gradient(90deg,${LEGEND_STOPS(d.colormap).join(",")})"></div>
@@ -191,6 +241,10 @@ function renderMetrics(t) {
     return;
   }
   const r = t.result;
+  if (r.static_origin || !r.variants.length) {
+    deck.close();
+    return;
+  }
   const vs = r.variants;
   const row = (label, f) => `<tr><td>${label}</td>${vs.map((v) => `<td>${f(v)}</td>`).join("")}</tr>`;
   const res = (v, k, d = 1, u = "") => (v.asset_metrics ? `${fmt.num(v.asset_metrics.resources[k], d)} ${u}` : "—");
@@ -200,14 +254,15 @@ function renderMetrics(t) {
     : row("O₂ (g)", (v) => (v.asset_metrics ? fmt.num(v.asset_metrics.resources.o2_kg * 1000, 0) : "—")) + row("Agua (g)", (v) => (v.asset_metrics ? fmt.num(v.asset_metrics.resources.water_kg * 1000, 0) : "—")) + row("Batería PLSS (Wh)", (v) => res(v, "battery_wh", 0));
   const sel = vs.find((v) => v.variant === t.variant) || vs[0];
   const p = sel.pnr;
+  const budget = p?.resource_margins?.[p.limiting_resource];
   const pnrHtml = !p ? `<div class="dim">Métricas de rover/EVA omitidas: ${esc(r.metrics_suppressed_reason || "origen estático")}</div>`
     : `<dl class="kv pnr-eval">
-        <dt>Estado</dt><dd class="${p.status === "round_trip_safe" ? "state-go" : p.status === "infeasible" ? "state-abort" : "state-caution"}">${{ round_trip_safe: "Ida y vuelta segura", pnr_exceeded: "PNR superado", infeasible: "Inviable" }[p.status]}</dd>
-        <dt>Recurso</dt><dd>${esc(p.resource)}</dd>
-        <dt>Disponible / capacidad</dt><dd>${fmt.num(p.available, 2)} / ${fmt.num(p.capacity, 2)}</dd>
-        <dt>Reserva</dt><dd>${fmt.num(p.reserve, 2)}</dd>
-        <dt>Ida / regreso</dt><dd>${fmt.num(p.outbound_total, 2)} / ${fmt.num(p.return_total, 2)}</dd>
-        <dt>Asimetría</dt><dd>${fmt.num(p.asymmetry, 2)}</dd>
+        <dt>Estado</dt><dd class="${p.status === "round_trip_safe" ? "state-go" : p.status === "infeasible" ? "state-abort" : "state-caution"}">${{ round_trip_safe: "Ida y vuelta segura", pnr_exceeded: "Retorno no garantizado después del PNR", infeasible: "Inviable" }[p.status]}</dd>
+        <dt>Recurso limitante</dt><dd>${esc({ o2_kg: "Oxígeno", water_kg: "Agua", battery_wh: "Batería" }[p.limiting_resource || p.resource])}</dd>
+        <dt>Disponible</dt><dd>${fmt.num(budget?.available ?? p.available, 2)}</dd>
+        <dt>Reserva</dt><dd>${fmt.num(budget?.reserve ?? p.reserve, 2)}</dd>
+        <dt>Ida / regreso</dt><dd>${fmt.num(budget?.outbound ?? p.outbound_total, 2)} / ${fmt.num(budget?.return ?? p.return_total, 2)}</dd>
+        <dt>Asimetría</dt><dd>${fmt.num(budget ? budget.return - budget.outbound : p.asymmetry, 2)}</dd>
         <dt>Margen ida y vuelta</dt><dd>${fmt.num(p.round_trip_margin, 2)}</dd>
         ${p.show_pnr && p.pnr_point ? `<dt>Punto de no retorno</dt><dd>${fmt.m(p.pnr_point.distance_m)} · ${p.pnr_point.lat.toFixed(4)}, ${p.pnr_point.lon.toFixed(4)}</dd>` : ""}
       </dl>`;
@@ -221,7 +276,7 @@ function renderMetrics(t) {
       ${row("Riesgo medio / máx.", (v) => `${fmt.num(v.metrics.risk_mean, 2)} / ${fmt.num(v.metrics.risk_max, 2)}`)}
       ${row("Tramos de alto riesgo", (v) => fmt.pct(100 * v.metrics.high_risk_fraction))}
       ${resRows}
-      ${row("Cobertura de datos", () => "MOLA 100%")}
+      ${row("Corte de enlace más largo", (v) => fmt.dur(v.metrics.max_blackout_s))}
     </tbody></table>
     <hr class="joint"/><div class="kicker">Evaluación PNR — ${esc(sel.label)}</div>${pnrHtml}
     ${r.direct.crosses_forbidden ? `<div class="alert-card" style="margin-top:8px;font-size:12px">La ruta directa cruza zonas prohibidas; solo la calculada es viable.</div>` : ""}`;

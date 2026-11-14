@@ -46,6 +46,8 @@
     <header class="panel-head"><span>Planificar travesía</span>
       <button id="planning-collapse" class="btn btn-icon" aria-label="Contraer planificación" title="Contraer (P)"></button></header>
     <div class="panel-body planning-body">
+      <p id="planning-empty" class="empty-state">Crea o selecciona una travesía en el rack para comenzar.</p>
+      <fieldset id="traverse-tools">
       <label class="label" for="origin">Origen:</label>
       <select id="origin" class="select"><option value="">Selecciona el origen</option></select>
       <div class="coord-edit" data-for="origin"><input class="input mono" id="origin-lat" aria-label="Latitud origen" placeholder="lat" /><input class="input mono" id="origin-lon" aria-label="Longitud origen" placeholder="lon" /></div>
@@ -58,7 +60,7 @@
       <div id="variants" class="variants"></div>
       <hr class="joint" />
       <div class="route-display btn-row" role="group" aria-label="Visualización de rutas">
-        <button id="show-direct" class="btn route-toggle" aria-pressed="true"><i class="sw direct"></i>Ruta directa</button>
+        <button id="show-direct" class="btn route-toggle" aria-pressed="false"><i class="sw direct"></i>Distancia directa</button>
         <button id="show-calculated" class="btn route-toggle" aria-pressed="true"><i class="sw calcd"></i>Ruta calculada</button>
       </div>
       <hr class="joint" />
@@ -70,7 +72,7 @@
       </div>
       <hr class="joint" />
       <details id="mission-params">
-        <summary>Parámetros de misión</summary>
+        <summary>Límites y parámetros de la travesía</summary>
         <div class="params"></div>
       </details>
       <hr class="joint" />
@@ -84,8 +86,9 @@
           <button class="btn" id="save-project"><span data-icon="save"></span>Guardar proyecto</button>
           <button class="btn btn-danger" id="delete-route"><span data-icon="trash"></span>Borrar ruta</button>
         </div>
-        <input type="file" id="import-file" accept=".geojson,.json,application/json" hidden />
       </details>
+      </fieldset>
+      <input type="file" id="import-file" accept=".geojson,.json,application/json" hidden />
     </div>
   </aside>
   <button id="planning-reopen" class="btn panel reopen-planning" hidden aria-label="Reabrir planificación"><span data-icon="expand"></span>Planificar</button>
@@ -103,7 +106,6 @@
     <button class="dock-btn" data-mode="general"><span data-icon="map"></span>General</button>
     <button class="dock-btn" data-mode="analyze"><span data-icon="layers"></span>Analizar<span class="eye" role="switch" tabindex="0" aria-pressed="true" aria-label="Mostrar capas analíticas" data-eye="analyze"></span></button>
     <button class="dock-btn" data-mode="plan"><span data-icon="sliders"></span>Planificar<span class="eye" role="switch" tabindex="0" aria-pressed="true" aria-label="Mostrar rutas" data-eye="plan"></span></button>
-    <button class="dock-btn" data-mode="focus"><span data-icon="focus"></span>Enfocar</button>
   </nav>
   <div id="focus-menu" class="focus-menu panel" hidden role="menu" aria-label="Enfocar sector"></div>
 
@@ -114,6 +116,7 @@
   <div class="br">
     <div class="quick panel" id="quick-dock">
       <button id="new-point" class="btn" aria-pressed="false"><span data-icon="pin"></span>Nuevo punto</button>
+      <button id="focus-btn" class="btn" aria-haspopup="menu" aria-expanded="false"><span data-icon="focus"></span>Enfocar</button>
       <button id="legend-btn" class="btn"><span data-icon="book"></span>Leyenda</button>
     </div>
     <div class="coords panel mono" id="coord-hud" aria-live="off">

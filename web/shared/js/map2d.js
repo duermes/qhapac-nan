@@ -21,7 +21,7 @@ export class Map2D {
     this.ctx = canvas.getContext("2d");
     this.region = region;
     this.g = region.grid;
-    this.opts = { maxScale: 48, contours: true, labels: true, trackUp: false, ...opts };
+    this.opts = { maxScale: Math.max(48, this.g.dxC * 100 / 30), contours: true, labels: true, trackUp: false, ...opts };
     this.layers = [];           // {id, canvas, opacity, visible, stride}
     this.routes = [];           // {id, points:[{lat,lon}], color, width, dash, segments, visible}
     this.entities = [];
@@ -146,7 +146,7 @@ export class Map2D {
 
   fitBBox(b) {
     const a = this.g.toRC(b.lat_max, b.lon_min), z = this.g.toRC(b.lat_min, b.lon_max);
-    this.cam.cx = (a.c + z.c) / 2; this.cam.cy = (a.r + z.r) / 2;
+    this.cam.cx = (a.c + z.c) / 2 + 0.5; this.cam.cy = (a.r + z.r) / 2 + 0.5;
     this.cam.scale = Math.min(this.w / Math.max(1, z.c - a.c), this.h / Math.max(1, z.r - a.r)) * 0.9;
     this.clampCam();
     this.draw();
@@ -314,7 +314,7 @@ export class Map2D {
       ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
       if (rt.segments?.length) {
         // solid colour segmentation by PNR state
-        const col = { safe: "#3fbf7f", caution: "#e8a33d", no_return: "#e0534a" };
+        const col = { safe: "#65d8ff", caution: "#65d8ff", no_return: "#ff8c36" };
         rt.segments.forEach((s) => {
           const a = pts[s.from], b = pts[s.to];
           if (!a || !b) return;
@@ -330,9 +330,9 @@ export class Map2D {
       ctx.setLineDash([]);
       if (rt.pnr) {
         const p = this.llToScreen(rt.pnr.lat, rt.pnr.lon);
-        ctx.fillStyle = "#e0534a"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
+        ctx.fillStyle = "#ff8c36"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - 8); ctx.lineTo(p.x + 7, p.y + 5); ctx.lineTo(p.x - 7, p.y + 5); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.font = "600 10px 'Chakra Petch'"; ctx.fillStyle = "#ffb4ad"; ctx.fillText("PNR", p.x + 9, p.y + 4);
+        ctx.font = "600 10px 'Chakra Petch'"; ctx.fillStyle = "#ffd0ac"; ctx.fillText("PNR", p.x + 9, p.y + 4);
       }
     }
   }

@@ -38,8 +38,9 @@ def test_frontend_view_mode_switching():
 
 def test_frontend_project_tabs_and_modes():
     assert "export function addSession" in JS and "export function closeSession" in JS and "export function switchSession" in JS
-    for mode in ('data-mode="general"', 'data-mode="analyze"', 'data-mode="plan"', 'data-mode="focus"'):
+    for mode in ('data-mode="general"', 'data-mode="analyze"', 'data-mode="plan"'):
         assert mode in HTML
+    assert 'id="focus-btn"' in HTML and 'data-mode="focus"' not in HTML
 
 
 def test_frontend_risk_factor_inspection_logic():

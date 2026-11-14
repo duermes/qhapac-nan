@@ -55,6 +55,7 @@ export function renderVitals(v, extra) {
 const ORDER = { critical: 0, warning: 1, info: 2 };
 export function renderAlerts(list) {
     const sorted = [...list].sort((a, b) => ORDER[a.level] - ORDER[b.level]);
+    $(".suit").hidden = sorted.length === 0;
     $("#alert-count").textContent = String(sorted.filter((a) => a.level !== "info").length);
     $("#alert-count").className = `badge ${sorted.some((a) => a.level === "critical") ? "danger" : sorted.length ? "synthetic" : "cached"}`;
     $("#suit-alerts").innerHTML = sorted.length ? sorted.map((a) => `<div class="a ${a.level}" data-code="${esc(a.code)}">${a.level === "critical" ? "CRÍTICO: " : a.level === "warning" ? "Aviso: " : ""}${esc(a.text)}</div>`).join("")

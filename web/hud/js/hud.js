@@ -37,7 +37,7 @@ async function boot() {
     const others = entities;
     scene.setMarkers(others, (n) => icon(n));
     const start = scene.toLatLon(H.x, H.z);
-    H.targets = others.filter((e) => ["poi", "sample", "base", "rover", "landmark"].includes(e.kind))
+    H.targets = others.filter((e) => ["poi", "sample", "base", "rover", "astronaut", "landmark", "antenna"].includes(e.kind))
         .sort((a, b) => haversine(start.lat, start.lon, a.lat, a.lon) - haversine(start.lat, start.lon, b.lat, b.lon));
     H.ti = Math.max(0, H.targets.findIndex((t) => t.kind === "sample"));
     vit = createVitals();
@@ -107,15 +107,18 @@ function panels() {
         const brg = bearing(p.lat, p.lon, t.lat, t.lon);
         const localTarget = scene.toLocal(t.lat, t.lon);
         const dz = scene.surfaceElevation(localTarget.x, localTarget.z) - e;
-        $("#goal-dist").textContent = fmt.m(dist);
+        $("#goal-dist").textContent = fmt.m(H.route?.metrics.distance_m ?? dist);
         $("#goal-name").textContent = t.name;
         $("#goal-brg").textContent = `${String(Math.round(brg)).padStart(3, "0")}°`;
-        $("#goal-eta").textContent = `${(dist / 0.9 / 60).toFixed(1)} min`;
+        $("#goal-eta").textContent = H.route ? fmt.dur(H.route.metrics.duration_s) : "—";
         $("#goal-dz").textContent = `${dz >= 0 ? "+" : ""}${dz.toFixed(1)} m`;
         const tBase = base ? haversine(t.lat, t.lon, base.lat, base.lon) : 0;
         const safe = !H.routeError && tBase <= (vit.last?.walkback?.walkback_m ?? walkLimit) && (!H.route || H.route.pnr.status === "round_trip_safe");
         $("#goal-safe").textContent = H.routeError ? "Sin ruta transitable" : safe ? "Retorno con reserva" : "Reserva insuficiente";
         $("#goal-safe").className = safe ? "ok" : "bad";
+    const pnr = H.route?.pnr?.pnr_point;
+    $("#goal-pnr").hidden = !pnr;
+    if (pnr) $("#goal-pnr").textContent = `PNR · ${fmt.lat(pnr.lat)}, ${fmt.lon(pnr.lon)} · ${fmt.m(pnr.distance_m)}`;
         $("#director").style.transform = `translateX(-50%) rotate(${((brg - hdg + 540) % 360) - 180}deg)`;
     }
     const fov = entities.filter((x) => x.id !== EVA_ID && !H.samples.includes(x.id) && !H.inside).map((x) => ({ x, d: haversine(p.lat, p.lon, x.lat, x.lon), rel: ((bearing(p.lat, p.lon, x.lat, x.lon) - hdg + 540) % 360) - 180 }))
@@ -128,13 +131,20 @@ function panels() {
         .map(x => ({ entity: x, distance: Math.hypot(H.x - x.x, H.z - x.z) }))
         .filter(x => x.distance < 4.8).sort((a, b) => a.distance - b.distance)[0]?.entity;
     const station = scene.world.interactiveStations.find(s => Math.hypot(H.x - s.x, H.z - s.z) < 5.8);
-    H.prompt = scene.character.nearBaseAirlock ? "base" : H.inside ? Math.hypot(H.x + 65, H.z + 69.8) < 7 ? "monitor" : null : smp || (station ? { station } : null);
+    const companion = entities.filter(e => ["rover", "astronaut", "poi"].includes(e.kind))
+        .map(e => ({ e, distance: Math.hypot(H.x - e.x, H.z - e.z) }))
+        .filter(({ distance }) => distance < 10).sort((a, b) => a.distance - b.distance)[0]?.e;
+    H.prompt = scene.character.nearBaseAirlock ? "base" : H.inside
+        ? Math.hypot(H.x + 65, H.z + 69.8) < 7 ? "monitor" : null
+        : smp || (station ? { station } : companion ? { companion } : null);
     const pr = $("#prompt");
     pr.hidden = !H.prompt;
     if (H.prompt === "base")
-        pr.innerHTML = `${icon("home")} Presiona [F] para ${H.inside ? "salir a la superficie" : "entrar a " + esc(base.name)}`;
+        pr.innerHTML = `${icon("home")} Pulsa [E] para ${H.inside ? "salir a la superficie" : "entrar a " + esc(base.name)}`;
     else if (H.prompt === "monitor") pr.innerHTML = `${icon("eye")} Presiona [E] para consultar el monitor de misión`;
     else if (H.prompt?.station) pr.innerHTML = `${icon("eye")} Presiona [E] para inspeccionar ${esc(H.prompt.station.name)}`;
+    else if (H.prompt?.companion)
+        pr.innerHTML = `${icon("eye")} Pulsa [E] para interactuar con ${esc(H.prompt.companion.name)}`;
     else if (H.prompt)
         pr.innerHTML = `${icon("sample")} Presiona [E] para recolectar ${esc(H.prompt.name)}`;
     H.dBase = dBase;
@@ -172,11 +182,22 @@ async function slow() {
     if (vit.effort.heartRateBpm > 160) alerts.push({ level: "warning", code: "HR", text: "Frecuencia cardíaca elevada" });
     if (H.sos) alerts.push({ level: "critical", code: "SOS", text: "Emergencia EVA declarada — retorno asistido" });
     if (vit.leak) alerts.push({ level: "critical", code: "LEAK", text: "Fuga en traje (simulación): consumo O₂ x2.2" });
+    if (!H.inside && H.routeError) alerts.push({ level: "warning", code: "ROUTE", text: H.routeError });
+    if (H.notice && H.notice.until > performance.now()) alerts.push({ level: "info", code: "ACTION", text: H.notice.text });
     renderAlerts(alerts);
     $("#traction").textContent = H.inside ? "HÁBITAT PRESURIZADO · ENTRENAMIENTO" : hazard.hasHazard ? hazard.message : H.gradient > 0.2 ? "SUBIDA ESCARPADA · AVANCE REDUCIDO" : "TRACCIÓN NOMINAL";
     relief();
     scene.updateMissionMonitor(vit, H.samples.length);
     await flushConsumption();
+    const active = await api.harness().catch(() => null);
+    if (active) {
+      simBanner(active.simulation);
+      vit.leak = active.active.some((event) => event.kind === "suit_leak") ? 2.2 : 0;
+      const tag = JSON.stringify(active.active.map(({ id, t }) => [id, t]));
+      if (typeof H.contingencies === "string" && H.contingencies !== tag) planToTarget(true);
+      H.contingencies = tag;
+    }
+    if (!H.inside && H.route && vit.o2_kg < (H.lastPlannedO2 ?? 0) - 0.03 && !H.planning) planToTarget(true);
   } catch {
     $("#traction").textContent = "SIN ENLACE CON KHIPU · ESTADO LOCAL CONSERVADO";
   } finally {
@@ -197,13 +218,16 @@ async function planToTarget(silent) {
   const t = target();
   if (!t || H.inside || H.samples.includes(t.id)) return;
   const version = H.planVersion = (H.planVersion || 0) + 1;
+  H.planning = true;
   try {
     await flushConsumption();
     const points = localRoute(scene, { x: H.x, z: H.z }, t);
-    if (points.length < 2) { scene.setRoute(null); return; }
-    const route = await evaRequest("surface-route", { asset_id: EVA_ID, points, available_o2_kg: vit.o2_kg });
+    if (points.length < 2) { H.route = null; H.routeError = null; scene.setRoute(null); return; }
+    const route = await evaRequest("surface-route", { asset_id: EVA_ID, points, available_o2_kg: vit.o2_kg,
+      available_water_kg: vit.water_kg, available_battery_wh: vit.battery_wh });
     if (version !== H.planVersion) return;
     H.route = route;
+    H.lastPlannedO2 = vit.o2_kg;
     H.routeError = null;
     scene.setRoute(route.points, route.pnr);
     if (!silent) toast(`Ruta Khipu: ${fmt.m(route.metrics.distance_m)} · ${route.pnr.status === "round_trip_safe" ? "retorno con reserva" : "reserva insuficiente"}`, route.pnr.status === "round_trip_safe" ? "safe" : "danger");
@@ -214,14 +238,16 @@ async function planToTarget(silent) {
     scene.setRoute(null);
     $("#goal-safe").textContent = "Sin ruta transitable";
     if (!silent) toast(e.message, "danger", 6000);
-  }
+  } finally { if (version === H.planVersion) H.planning = false; }
 }
 
 async function interact(key) {
-  if (H.resupplying) return;
-  if (H.prompt === "base" && key !== "e") {
+  if (H.resupplying || scene.cameraMode !== "first") return;
+  if (H.prompt === "base") {
     if (!scene.character.toggleBaseAirlock()) return;
     H.keys.clear();
+    H.planVersion = (H.planVersion || 0) + 1;
+    H.planning = false;
     H.inside = scene.character.isInsideBase;
     H.x = scene.character.position.x;
     H.z = scene.character.position.z;
@@ -236,7 +262,7 @@ async function interact(key) {
         H.o2Start = supply.o2_kg;
         H.reported = 0;
         H.ledgerQueue = Promise.resolve();
-        toast("Hábitat presurizado · traje recargado · F para salir por la esclusa", "safe", 6000);
+        toast("Hábitat presurizado · traje recargado · E para salir por la esclusa", "safe", 6000);
       } catch (e) { toast(`Recarga pendiente: ${e.message}`, "danger"); }
       finally { H.resupplying = false; }
     } else {
@@ -249,7 +275,27 @@ async function interact(key) {
     modal({ title: "Monitor de misión · Base Alfa", body: `<p>SIMULACIÓN DE ENTRENAMIENTO</p><dl class="kv"><dt>Tripulación</dt><dd>Hábitat presurizado</dd><dt>Muestras</dt><dd>${H.samples.length}/${SAMPLE_CAPACITY}</dd><dt>O₂</dt><dd>${(vit.o2_kg / 1.2 * 100).toFixed(1)}%</dd><dt>Batería</dt><dd>${(vit.battery_wh / 1100 * 100).toFixed(1)}%</dd></dl>` });
   } else if (key !== "f" && H.prompt?.station) {
     const s = H.prompt.station;
-    modal({ title: s.infoTitle, body: `<p class="small">ESCENARIO SINTÉTICO DE ENTRENAMIENTO</p><p>${esc(s.infoDesc)}</p>` });
+    modal({ title: s.infoTitle,
+      body: `<p class="small">Equipo de entrenamiento</p><p>${esc(s.infoDesc)}</p><p>${s.fault ? "Falla detectada. Recupera el módulo de alimentación." : "Equipo operativo."}</p>`,
+      actions: s.fault ? [{ label: "Cerrar" }, { label: "Reparar", cls: "btn-gold", onClick: () => {
+        if (Math.hypot(H.x - s.x, H.z - s.z) > 5.8 || !s.fault) return;
+        s.fault = false;
+        s.beacon.color.setHex(0x69ddc9);
+        vit.grippingUntil = performance.now() + 2500;
+        vit.effort.collect();
+        vit.battery_wh = Math.max(0, vit.battery_wh - 2);
+        H.notice = { text: `${s.name} volvió a estado operativo`, until: performance.now() + 8000 };
+        toast(H.notice.text, "safe");
+        slow();
+      } }] : [{ label: "Cerrar" }]
+    });
+  } else if (key !== "f" && H.prompt?.companion) {
+    const point = H.prompt.companion;
+    modal({ title: point.name, body: `<p>${esc(point.description || "Punto de interés de la misión de entrenamiento.")}</p>`,
+      actions: [{ label: "Cerrar" }, { label: "Fijar como objetivo", cls: "btn-gold", onClick: () => {
+        const index = H.targets.findIndex((target) => target.id === point.id);
+        if (index >= 0) { H.ti = index; planToTarget(false); }
+      } }] });
   } else if (key !== "f" && H.prompt?.id) {
     if (H.samples.length >= SAMPLE_CAPACITY) { toast("Inventario completo: regresa al hábitat", "danger"); return; }
     const sample = scene.character.tryCollectNearestSample();
@@ -261,15 +307,16 @@ async function interact(key) {
     await flushConsumption().catch(() => {});
     panels();
     slow();
-  } else toast("Acércate a una muestra, estación o esclusa", "", 1500);
+  } else toast("Acércate a una muestra, un activo o la esclusa", "", 1500);
 }
 
 function cycleCamera() {
     scene.cameraMode = scene.cameraMode === "third" ? "first" : "third";
-    if (scene.cameraMode === "third") {
-        scene.pitch = -0.15;
-    }
-    toast(scene.cameraMode === "first" ? "Cámara: primera persona" : "Cámara: tercera persona (vista restaurada)", "", 1500);
+    document.body.dataset.camera = scene.cameraMode;
+    H.keys.clear();
+    toggleHelp(false);
+    if (scene.cameraMode === "third") scene.pitch = -0.15;
+    scene.renderer.domElement.focus({ preventScroll: true });
 }
 function handleIntent(r) {
     if (r.intent === "poi_info") {
@@ -317,7 +364,7 @@ function setSos(on) {
 }
 function renderHelp() {
     $("#help-body").innerHTML = `<p><b>Moverse:</b> W/S o ▲▼ avanzar/retroceder · A/D o ◀▶ girar · arrastrar para mirar.</p>
-    <p><b>F</b> entrar/salir por la esclusa · <b>E</b> recolectar o inspeccionar estaciones y monitor · <b>C</b> cámara · <b>K</b> Khipu voz · <b>H</b> ayuda · <b>Tab</b> siguiente objetivo.</p>
+    <p><b>E</b> usar la esclusa, recolectar, hablar o inspeccionar y reparar equipos · <b>C</b> para cambiar de cámara. En vista externa, toca la escena para volver · <b>K</b> Khipu voz · <b>H</b> ayuda · <b>Tab</b> siguiente objetivo.</p>
     <p><b>Datos:</b> MOLA regional (463 m/px), con montes, dunas y rocas sintéticos para entrenamiento local. Consumibles: Khipu (Minetti/PLSS/Rohmert). Estamina: esfuerzo acumulado con recuperación. Entidades: escenario sintético.</p>
     <p><b>Walkback:</b> límite a pie ${walkLimit} m con reserva del 25%. Recalcular no repone O₂.</p>`;
 }
@@ -327,6 +374,23 @@ function toggleHelp(force) {
     $("#help-btn").setAttribute("aria-expanded", String(!h.hidden));
 }
 function bind() {
+    const canvas = scene.renderer.domElement;
+    canvas.tabIndex = 0;
+    canvas.setAttribute("aria-label", "Escena EVA. Pulsa C para alternar la cámara o toca la escena para volver al visor");
+    canvas.addEventListener("dblclick", () => { if (scene.cameraMode === "third") cycleCamera(); });
+    let touch = null;
+    canvas.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "touch" && scene.cameraMode === "third") {
+        touch = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      }
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      if (touch?.id === event.pointerId && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) < 12) {
+        cycleCamera();
+      }
+      touch = null;
+    });
+    canvas.addEventListener("pointercancel", () => { touch = null; });
     window.addEventListener("blur", () => H.keys.clear());
     document.addEventListener("visibilitychange", () => { if (document.hidden) H.keys.clear(); });
     const km = { w: "fwd", arrowup: "fwd", s: "back", arrowdown: "back", a: "left", arrowleft: "left", d: "right", arrowright: "right" };
@@ -341,6 +405,7 @@ function bind() {
         if ((k === "f" || k === "e") && !e.repeat) { e.preventDefault(); interact(k); }
         if ((k === "c" || k === "v") && !e.repeat)
             cycleCamera();
+        if (scene.cameraMode === "third") return;
         if (k === "h")
             toggleHelp();
         if (k === "k")

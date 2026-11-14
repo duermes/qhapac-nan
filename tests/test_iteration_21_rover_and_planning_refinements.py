@@ -38,7 +38,7 @@ def test_terrain_metadata_includes_analytical_cross_layers(client):
 
 def test_vehicle_layer_track_up_invariance_in_bundle():
     r = read("rover/js/rover.js")
-    assert "map.cam.rot = -S.heading * Math.PI / 180" in r
+    assert "function moveCamera" in r and "map.focusOn(S.lat, S.lon)" in r
     m2 = read("shared/js/map2d.js")
     assert "this.cam.rot" in m2  # rover heading arrow compensates map rotation
 

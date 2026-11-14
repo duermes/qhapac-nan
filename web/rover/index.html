@@ -17,11 +17,11 @@
   <div class="tl"><div id="brand"></div><a href="/home" class="btn panel home-link" aria-label="Volver al portal"><span data-icon="home"></span></a></div>
 
   <!-- top centre: compass strip, heading pointer, goal meta -->
-  <div class="tc">
+  <div class="tc" id="rover-heading" data-window>
     <div class="compass panel mono" aria-label="Rumbo"><div class="compass-tape" id="compass-tape"></div><b id="compass-val">—°</b></div>
     <div class="nav-dial panel" id="nav-dial" aria-label="Dirección al objetivo"><span data-icon="nav"></span></div>
   </div>
-  <div class="goal-meta panel mono" id="goal-meta" aria-live="polite">
+  <div class="goal-meta panel mono" id="goal-meta" data-window aria-live="polite">
     <div class="gold">META: <span id="meta-dist">—</span> <span id="meta-brg"></span></div>
     <div class="green" id="meta-corridor">EN CORREDOR: —</div>
     <div class="muted" id="meta-eta">ETA: —</div>
@@ -29,64 +29,53 @@
 
   <!-- top right -->
   <div class="tr">
-    <div style="display:flex;gap:8px">
+    <div class="map-actions">
       <button id="view-toggle" class="btn panel" aria-pressed="false" title="Alternar 2D/3D (V)"><span data-icon="cube"></span><span id="view-label">2D</span></button>
-      <button id="map-menu-btn" class="btn panel" aria-haspopup="true" aria-expanded="false"><span data-icon="settings"></span>Mapa</button>
+      <button id="map-menu-btn" class="btn panel" title="Cambiar a la siguiente capa"><span data-icon="layers"></span><span id="map-layer-label">Relieve</span></button>
+      <button id="panels-toggle" class="btn panel" aria-controls="rover-left rover-right goal-meta rover-heading rover-foot" aria-expanded="true"><span data-icon="eye"></span>Paneles</button>
     </div>
-    <div id="map-menu" class="map-menu panel" hidden role="menu" aria-label="Capas del mapa"></div>
     <div class="pill panel" id="region-pill"><span class="dot-live"></span><span id="region-name">—</span></div>
   </div>
 
   <!-- left column -->
-  <aside class="col-left">
-    <section class="panel card" aria-label="Instrumentos de conducción">
-      <header class="panel-head">Instrumentos de conducción</header>
+  <aside class="col-left" id="rover-left" data-window>
+    <details class="panel card rover-window" aria-label="Telemetría del rover" open>
+      <summary class="panel-head">Telemetría del rover</summary>
       <div class="instruments">
         <div class="speed"><b id="speed" class="mono">0.0</b><span>KM / H</span></div>
         <div class="sep"></div>
         <div class="heading"><span class="kicker">Rumbo</span><b id="heading" class="mono">—°</b></div>
       </div>
-    </section>
-    <section class="panel card" aria-label="Guía de ruta">
-      <header class="panel-head">Guía de ruta</header>
+    </details>
+    <details class="panel card rover-window" aria-label="Guía de ruta" open>
+      <summary class="panel-head">Guía de ruta</summary>
       <div class="panel-body guide">
         <div class="guide-row"><span class="turn" id="turn-icon"></span><div><b id="guide-step">Sin ruta activa</b><div class="muted small" id="guide-sub">Planifica un objetivo en modo Planificar.</div></div></div>
         <div class="chips"><span class="chip mono" id="g-next">— m</span><span class="chip mono" id="g-eta">ETA: —</span><span class="chip mono" id="g-total">Total: —</span></div>
       </div>
-    </section>
-    <section class="panel card" aria-label="Controles de navegación">
-      <header class="panel-head">Controles de navegación</header>
+    </details>
+    <details class="panel card rover-window" aria-label="Controles de navegación" open>
+      <summary class="panel-head">Controles de navegación</summary>
       <div class="panel-body nav-ctrls">
-        <button id="autopilot" class="btn big" aria-pressed="false"><span data-icon="nav"></span><span>Piloto Auto:<br><b id="ap-state">MANUAL</b></span></button>
         <button id="science-radar" class="btn big" aria-pressed="false"><span data-icon="flask"></span><span>Radar Ciencia</span></button>
-        <button id="safe-return" class="btn big"><span data-icon="undo"></span><span>Retorno Seguro</span></button>
+        <button id="safe-return" class="btn big"><span data-icon="undo"></span><span>Trazar regreso</span></button>
       </div>
-    </section>
-    <section class="panel card dpad-card" aria-label="Control manual">
-      <header class="panel-head">Control manual <span class="dim small">WASD / flechas</span></header>
-      <div class="dpad" id="dpad">
-        <button class="btn" data-dir="up" aria-label="Avanzar"><span data-icon="arrowup"></span></button>
-        <button class="btn" data-dir="left" aria-label="Girar a la izquierda"><span data-icon="arrowleft"></span></button>
-        <button class="btn" data-dir="stop" aria-label="Detener"><span data-icon="stop"></span></button>
-        <button class="btn" data-dir="right" aria-label="Girar a la derecha"><span data-icon="arrowright"></span></button>
-        <button class="btn" data-dir="down" aria-label="Retroceder"><span data-icon="arrowdown"></span></button>
-      </div>
-    </section>
+    </details>
   </aside>
 
   <!-- right column -->
-  <aside class="col-right">
-    <section class="panel card" aria-label="Recursos y enlace">
-      <header class="panel-head">Recursos y enlace</header>
+  <aside class="col-right" id="rover-right" data-window>
+    <details class="panel card rover-window" aria-label="Recursos y enlace" open>
+      <summary class="panel-head">Recursos y enlace</summary>
       <div class="panel-body res-grid">
         <div class="tile"><span class="kicker">Batería:</span><b class="mono" id="battery">—</b><div class="bar"><i id="battery-bar"></i></div></div>
         <div class="tile"><span class="kicker">Walkback:</span><b class="mono" id="walkback">—</b><span class="small muted" id="walkback-dist"></span></div>
         <div class="tile"><span class="kicker">Enlace RF:</span><b class="mono" id="link">—</b></div>
         <div class="tile zone" id="zone"><span>ZONA SEGURA</span><b id="fsm">[—]</b></div>
       </div>
-    </section>
-    <section class="panel card" aria-label="Terreno y tracción">
-      <header class="panel-head">Terreno y tracción</header>
+    </details>
+    <details class="panel card rover-window" aria-label="Terreno y tracción" open>
+      <summary class="panel-head">Terreno y tracción</summary>
       <div class="panel-body traction">
         <div class="att">
           <div class="att-row"><span class="kicker">Cabeceo</span><b class="mono" id="pitch">—</b></div><div class="bar"><i id="pitch-bar"></i></div>
@@ -95,7 +84,7 @@
         <div class="slip"><span class="kicker">Derrape</span><b class="mono" id="slip">—</b><span class="badge" id="traction-state">—</span></div>
       </div>
       <div class="panel-body small muted" id="loc-line" style="padding-top:0">Localización: —</div>
-    </section>
+    </details>
     <section class="panel card" id="inspect-card" hidden aria-label="Detalle del objetivo">
       <header class="panel-head"><span id="inspect-title">Detalle</span><button class="btn btn-icon" id="inspect-close" aria-label="Cerrar detalle"><span data-icon="x"></span></button></header>
       <div class="panel-body" id="inspect-body"></div>
@@ -111,11 +100,23 @@
   <div class="br">
     <div class="actions">
       <button id="voice" class="btn panel"><span data-icon="radio"></span>Copiloto Voz</button>
-      <button id="estop" class="btn btn-danger estop" aria-pressed="false"><span data-icon="alert"></span><span id="estop-label">Parada de<br>emergencia</span></button>
     </div>
-    <div class="rover-foot panel mono" id="rover-foot"><span class="dot-live"></span> ROVER: <b id="rv-pos">—</b> <span id="rv-cell" class="dim"></span><div class="dim" id="rv-elev">Elev: — | Pendiente: —</div></div>
+    <div class="rover-foot panel mono" id="rover-foot" data-window><span class="dot-live"></span> ROVER: <b id="rv-pos">—</b> <span id="rv-cell" class="dim"></span><div class="dim" id="rv-elev">Elev: — | Pendiente: —</div></div>
   </div>
-  <div class="bl"><div id="scale" class="scale mono">—</div><button id="demo-btn" class="btn panel small" title="Configuración de demo (simulación)"><span data-icon="settings"></span>Demo</button></div>
+  <div class="bl">
+    <details class="panel camera-controls" open>
+      <summary>Cámara</summary>
+      <div class="dpad" id="dpad">
+        <button class="btn" data-dir="up" aria-label="Desplazar mapa arriba"><span data-icon="arrowup"></span></button>
+        <button class="btn" data-dir="left" aria-label="Desplazar mapa a la izquierda"><span data-icon="arrowleft"></span></button>
+        <button class="btn" data-dir="center" aria-label="Centrar mapa en el rover"><span data-icon="focus"></span></button>
+        <button class="btn" data-dir="right" aria-label="Desplazar mapa a la derecha"><span data-icon="arrowright"></span></button>
+        <button class="btn" data-dir="down" aria-label="Desplazar mapa abajo"><span data-icon="arrowdown"></span></button>
+        <button class="btn" data-dir="out" aria-label="Alejar mapa">−</button>
+        <button class="btn" data-dir="in" aria-label="Acercar mapa">+</button>
+      </div>
+    </details>
+    <div id="scale" class="scale mono">—</div><button id="demo-btn" class="btn panel small" title="Configuración de demo (simulación)"><span data-icon="settings"></span>Demo</button></div>
   <div id="decks"></div>
   <script type="module" src="/static/rover/js/rover.js"></script>
 </body>

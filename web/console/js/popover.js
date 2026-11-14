@@ -20,8 +20,9 @@ export function initPopover(c) {
   pop.setAttribute("aria-label", "Detalle del punto");
   $("#stage").appendChild(pop);
   onClickOutside(pop, () => close(), [$("#map2d"), $("#map3d")]);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { setAddMode(false); close(); } });
   ctx.on("mapclick", onMapClick);
+  ctx.on("mode", close);
   ctx.on("entities", markDraggable);
   ctx.map2d.on("entitydrag", () => close());
   ctx.map2d.on("entitydrop", onDrop);
@@ -53,8 +54,8 @@ function place(screen) {
 }
 
 function onMapClick({ ll, hit, screen }) {
-  if (hit) { openEntity(hit, screen); return; }
   if (ctx.cur.addMode) { addPointDialog(ll); return; }
+  if (hit) { openEntity(hit, screen); return; }
   openPoint(ll, screen);
 }
 
@@ -66,11 +67,12 @@ function metaBlock(lat, lon) {
 
 function openPoint(ll, screen) {
   ctx.selection = null;
+  const selecting = ctx.cur.mode === "plan" && activeTraverse();
   pop.innerHTML = `<div class="pop-head"><div><div class="pop-title">Punto del terreno</div><div class="pop-kind">inspección</div></div>
       <button class="btn btn-icon" data-x aria-label="Cerrar">${icon("x")}</button></div>
     <div class="pop-body">${metaBlock(ll.lat, ll.lon)}<div class="dim" style="font-size:10px;margin-top:6px">${provBadge("derived_from_nasa")} interpolación bilineal de MOLA 463 m/px</div></div>
-    <div class="pop-actions"><button class="btn" data-a="wp">${icon("pin")} Crear waypoint</button><button class="btn" data-a="dest">${icon("target")} Usar como destino</button>
-      <button class="btn" data-a="orig">${icon("nav")} Usar como origen</button><button class="btn" data-a="focus">${icon("focus")} Enfocar</button></div>`;
+    <div class="pop-actions"><button class="btn" data-a="wp">${icon("pin")} Crear waypoint</button><button class="btn" data-a="dest" ${selecting ? "" : "hidden"}>${icon("target")} Usar como destino</button>
+      <button class="btn" data-a="orig" ${selecting ? "" : "hidden"}>${icon("nav")} Usar como origen</button><button class="btn" data-a="focus">${icon("focus")} Enfocar</button></div>`;
   place(screen);
   pop.querySelector("[data-x]").onclick = close;
   pop.querySelectorAll("[data-a]").forEach((b) => b.addEventListener("click", () => {
@@ -88,21 +90,25 @@ function openEntity(e, screen, editing = false) {
   refreshScene();
   const reg = ASSET_REGISTRY[e.kind] || ASSET_REGISTRY.waypoint;
   const editable = e.source === "user";
+  const selecting = ctx.cur.mode === "plan" && activeTraverse();
+  const mobile = isMobile(e);
   const meta = Object.entries(e.metadata || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(typeof v === "object" ? JSON.stringify(v) : v)}</dd>`).join("");
   const read = `<div class="pop-body">${metaBlock(e.lat, e.lon)}
       ${e.description ? `<p style="font-size:12px;margin:8px 0 0">${esc(e.description)}</p>` : ""}
+      ${mobile ? mobileReadout(e) : ""}
       ${meta ? `<hr class="joint"/><dl class="kv">${meta}</dl>` : ""}
       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${provBadge(e.source === "user" ? "user" : (e.provenance || "synthetic"))}${isMobile(e) ? '<span class="badge derived">móvil</span>' : '<span class="badge cached">estático</span>'}${e.locked ? `<span class="badge model">${icon("lock")} bloqueado</span>` : ""}</div></div>
     <div class="pop-actions">
-      <button class="btn" data-a="orig" ${["base", "habitat", "rover", "astronaut", "waypoint"].includes(e.kind) ? "" : "disabled"}>${icon("nav")} Origen</button>
-      <button class="btn" data-a="dest">${icon("target")} Destino</button>
-      <button class="btn" data-a="route" ${["base", "habitat", "rover", "astronaut", "waypoint"].includes(e.kind) ? "" : "disabled"}>${icon("route")} Ruta desde aquí</button>
-      <button class="btn" data-a="addwp" ${e.kind === "waypoint" ? "" : "disabled"}>${icon("plus")} Añadir a ruta</button>
+      <button class="btn" data-a="orig" ${selecting ? "" : "hidden"}>${icon("nav")} Origen</button>
+      <button class="btn" data-a="dest" ${selecting ? "" : "hidden"}>${icon("target")} Destino</button>
+      <button class="btn" data-a="route" ${selecting ? "" : "hidden"}>${icon("route")} Ruta desde aquí</button>
+      <button class="btn" data-a="addwp" ${selecting ? "" : "hidden"}>${icon("plus")} Añadir a ruta</button>
       ${editable ? `<button class="btn" data-a="edit" ${e.locked ? "disabled" : ""}>${icon("edit")} Editar</button><button class="btn btn-danger" data-a="del" ${e.locked ? "disabled" : ""}>${icon("trash")} Borrar</button>` : ""}
     </div>`;
   const form = `<form class="pop-body edit-form"><label class="label" for="ed-name">Nombre</label><input class="input" id="ed-name" name="name" value="${esc(e.name)}" required maxlength="120">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><div><label class="label" for="ed-lat">Lat</label><input class="input mono" id="ed-lat" name="lat" value="${e.lat.toFixed(5)}"></div>
       <div><label class="label" for="ed-lon">Lon</label><input class="input mono" id="ed-lon" name="lon" value="${e.lon.toFixed(5)}"></div></div>
+      ${mobile ? mobileFields(e.kind, e) : ""}
       <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px"><button type="button" class="btn" data-cancel>Cancelar</button><button type="submit" class="btn btn-gold">Guardar</button></div></form>`;
   pop.innerHTML = `<div class="pop-head"><div><div class="pop-title">${esc(e.name)}</div><div class="pop-kind" style="color:${reg.color}">${esc(reg.label)} · ${esc(e.id)}</div></div>
     <button class="btn btn-icon" data-x aria-label="Cerrar">${icon("x")}</button></div>${editing ? form : read}`;
@@ -116,7 +122,7 @@ function openEntity(e, screen, editing = false) {
       const lat = parseFloat(f.get("lat")), lon = parseFloat(f.get("lon"));
       if (!ctx.region.grid.contains(lat, lon)) { toast("Coordenadas fuera de la región", "warn"); return; }
       try {
-        await api.patchAsset(e.id, { name: f.get("name"), lat, lon });
+        await api.patchAsset(e.id, { name: f.get("name"), lat, lon, ...mobileValues(f, e.kind) });
         await reloadAssets();
         discardIfInRoute(e.id);
         openEntity(ctx.entities.find((x) => x.id === e.id), screen, false);
@@ -144,19 +150,22 @@ function openEntity(e, screen, editing = false) {
 }
 
 function discardIfInRoute(id) {
-  const t = activeTraverse();
-  if (!t) return;
-  const inRoute = t.origin?.id === id || t.destination?.id === id || t.waypoints.some((w) => w.id === id);
-  if (!inRoute) return;
-  const e = ctx.entities.find((x) => x.id === id);
-  if (e) {
-    if (t.origin?.id === id) Object.assign(t.origin, { lat: e.lat, lon: e.lon });
-    if (t.destination?.id === id) Object.assign(t.destination, { lat: e.lat, lon: e.lon });
-    t.waypoints.forEach((w) => { if (w.id === id) Object.assign(w, { lat: e.lat, lon: e.lon }); });
-  } else {
-    t.waypoints = t.waypoints.filter((w) => w.id !== id);
+  const entity = ctx.entities.find((point) => point.id === id);
+  for (const session of ctx.sessions) {
+    for (const traverse of session.traverses) {
+      const refs = [traverse.origin, traverse.destination, ...traverse.waypoints].filter((point) => point?.id === id);
+      if (!refs.length) continue;
+      if (entity) {
+        refs.forEach((point) => Object.assign(point, { lat: entity.lat, lon: entity.lon, name: entity.name }));
+      } else {
+        if (traverse.origin?.id === id) traverse.origin = null;
+        if (traverse.destination?.id === id) traverse.destination = null;
+        traverse.waypoints = traverse.waypoints.filter((point) => point.id !== id);
+      }
+      invalidate(traverse, "El punto cambió: se descartó la ruta calculada");
+    }
   }
-  invalidate(t, "El punto cambió: se descartó la ruta calculada");
+  ctx.emit("active-traverse", activeTraverse());
 }
 
 async function onDrop(e, ll) {
@@ -170,28 +179,66 @@ async function onDrop(e, ll) {
   }
 }
 
+const MOBILE_FIELDS = {
+  astronaut: [["o2_kg", "Oxígeno (kg)", 1.2, 1.2], ["water_kg", "Agua (kg)", 3.6, 3.6],
+    ["battery_wh", "Batería del traje (Wh)", 1100, 1100], ["speed_mps", "Velocidad (m/s)", 0.9, 5],
+    ["max_slope_deg", "Pendiente máxima (°)", 25, 30]],
+  rover: [["battery_wh", "Batería (Wh)", 60000, 60000], ["speed_mps", "Velocidad (m/s)", 2, 5],
+    ["max_slope_deg", "Pendiente máxima (°)", 20, 30]],
+};
+
+function mobileReadout(entity) {
+  const fields = MOBILE_FIELDS[entity.kind];
+  return `<dl class="kv"><dt>Activo</dt><dd>${entity.source === "user" ? "Virtual" : "Desplegado · lectura"}</dd>
+    ${fields.map(([key, label]) => `<dt>${label}</dt><dd>${esc(entity.resources?.[key] ?? entity[key] ?? "—")}</dd>`).join("")}</dl>`;
+}
+
+function mobileFields(kind, entity = {}) {
+  return (MOBILE_FIELDS[kind] || []).map(([key, label, fallback, max]) => `
+    <label class="label" for="mobile-${key}">${label}</label>
+    <input class="input mono" id="mobile-${key}" type="number" name="${key}"
+      min="${key in { speed_mps: 1, max_slope_deg: 1 } ? 0.1 : 0}" max="${max}" step="any" required
+      value="${entity.resources?.[key] ?? entity[key] ?? fallback}">`).join("");
+}
+
+function mobileValues(form, kind) {
+  if (!MOBILE_FIELDS[kind]) return {};
+  const values = Object.fromEntries(MOBILE_FIELDS[kind].map(([key]) => [key, Number(form.get(key))]));
+  const { speed_mps, max_slope_deg, ...resources } = values;
+  return { speed_mps, max_slope_deg, resources };
+}
+
 function addPointDialog(ll) {
   setAddMode(false);
   const n = (ctx.userAssets?.length || 0) + 1;
+  const sessionId = ctx.cur.id;
   const body = `<form id="add-point-form" style="display:grid;gap:8px">
     <div>${metaBlock(ll.lat, ll.lon)}</div>
     <label class="label" for="ap-name">Nombre</label><input class="input" id="ap-name" name="name" value="Waypoint ${n}" required maxlength="120">
     <label class="label" for="ap-kind">Tipo</label><select class="select" id="ap-kind" name="kind">
-      <option value="waypoint">Waypoint</option><option value="poi">POI científico</option><option value="sample">Muestra</option><option value="hazard">Peligro observado</option></select>
+      <option value="waypoint">Waypoint</option><option value="poi">POI científico</option><option value="sample">Muestra</option><option value="hazard">Peligro observado</option>
+      <option value="lava_pit">Fosa de lava</option><option value="laboratory">Laboratorio</option>
+      <option value="astronaut">Astronauta virtual</option><option value="rover">Rover virtual</option></select>
+    <div data-mobile-fields></div>
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="general"> Guardar en activos generales (persistente)</label></form>`;
-  modal({ title: "Nuevo punto", body, actions: [
+  const dialog = modal({ title: "Nuevo punto", body, actions: [
     { label: "Cancelar" },
     { label: "Crear punto", cls: "btn-gold", onClick: async (root) => {
-      const f = new FormData(root.querySelector("form"));
+      const form = root.querySelector("form");
+      if (!form.reportValidity()) return true;
+      const f = new FormData(form);
       const id = `WP_${Date.now().toString(36).toUpperCase()}`;
       try {
-        await api.addAsset({ id, name: f.get("name"), kind: f.get("kind"), lat: ll.lat, lon: ll.lon, session_id: ctx.cur.id, metadata: { created_in: "Hatun Wasi" } });
-        if (f.get("general")) await api.saveToGeneral(ctx.cur.id, [id]);
+        await api.addAsset({ id, name: f.get("name"), kind: f.get("kind"), lat: ll.lat, lon: ll.lon, session_id: sessionId, ...mobileValues(f, f.get("kind")), metadata: { created_in: "Hatun Wasi" } });
+        if (f.get("general")) await api.saveToGeneral(sessionId, [id]);
         await reloadAssets();
         toast("Punto creado", "safe", 1500);
       } catch (err) { toast(err.message, "danger"); return true; }
     } },
   ] });
+  dialog.el.querySelector("#ap-kind").addEventListener("change", (event) => {
+    dialog.el.querySelector("[data-mobile-fields]").innerHTML = mobileFields(event.target.value);
+  });
 }
 
 export { calculate };

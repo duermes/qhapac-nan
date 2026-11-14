@@ -142,14 +142,7 @@ export class CharacterController {
             const distFromHabCenter = Math.hypot(tx - this.terrain.baseCoord.x, tz - this.terrain.baseCoord.z);
             return distFromHabCenter > 9.8;
         }
-        const astronautRadius = 0.65;
-        for (const c of this.terrain.colliders) {
-            const dist = Math.hypot(tx - c.x, tz - c.z);
-            if (dist < (c.radius + astronautRadius)) {
-                return true;
-            }
-        }
-        return false;
+        return this.terrain.pathBlocked(this.position.x, this.position.z, tx, tz);
     }
     togglePerspective() {
         this.isFirstPerson = !this.isFirstPerson;
@@ -193,10 +186,11 @@ export class CharacterController {
                 this.currentSlopeDeg = 0;
                 this.currentSpeed = this.baseSpeed * 0.9;
             }
-            if (!this.checkCollision(nextX, nextZ)) {
+            const traversable = this.isInsideBase || Math.abs(this.currentSlopeDeg) <= 25;
+            if (traversable && !this.checkCollision(nextX, nextZ)) {
                 this.updatePosition(nextX, nextZ);
             }
-            else {
+            else if (traversable) {
                 if (!this.checkCollision(nextX, this.position.z)) {
                     this.updatePosition(nextX, this.position.z);
                 }

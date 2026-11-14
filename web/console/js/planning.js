@@ -8,7 +8,7 @@ import { persist, refreshScene, reloadAssets } from "./app.js";
 import { activeTraverse, addTraverse, render as renderTraverses } from "./traverses.js";
 
 let ctx;
-const ORIGIN_KINDS = ["base", "habitat", "rover", "astronaut", "waypoint"];
+
 
 export function initPlanning(c) {
   ctx = c;
@@ -42,6 +42,7 @@ export function initPlanning(c) {
   ctx.on("entities", fillSelects);
   ctx.on("session", () => { fillSelects(); syncForm(); syncToggles(); collapse(!!ctx.cur.planningCollapsed, true); });
   ctx.on("active-traverse", () => { syncForm(); refreshScene(); });
+  ctx.on("mode", () => collapse(!!ctx.cur.planningCollapsed, true));
   fillSelects();
 }
 
@@ -50,12 +51,19 @@ export const currentVariant = () => {
   return t?.result?.variants?.find((v) => v.variant === t.variant) || null;
 };
 
-function ensureTraverse() { return activeTraverse() || addTraverse(true); }
+function selectedTraverse() {
+  if (ctx.cur.mode !== "plan") return null;
+  const traverse = activeTraverse();
+  if (!traverse) toast("Crea una travesía antes de elegir sus puntos", "warn");
+  return traverse;
+}
 
 function collapse(on, silent) {
   ctx.cur.planningCollapsed = on;
-  $("#planning").hidden = on;
-  $("#planning-reopen").hidden = !on;
+  const planning = ctx.cur.mode === "plan";
+  $("#planning").hidden = !planning || on;
+  $("#planning-reopen").hidden = !planning || !on;
+  $("#traverses").hidden = !planning;
   if (!silent) persist();
 }
 
@@ -63,20 +71,21 @@ function optionLabel(e) { return `${e.name}${e.source === "user" ? " (sesión)" 
 
 function fillSelects() {
   const ents = ctx.entities || [];
-  const og = ents.filter((e) => ORIGIN_KINDS.includes(e.kind));
-  const dg = ents.filter((e) => e.kind !== "hazard");
+
   const group = (list) => {
     const by = {};
     list.forEach((e) => { (by[e.kind] ||= []).push(e); });
     return Object.entries(by).map(([k, l]) => `<optgroup label="${esc(ASSET_REGISTRY[k]?.label || k)}">${l.map((e) => `<option value="${esc(e.id)}">${esc(optionLabel(e))}</option>`).join("")}</optgroup>`).join("");
   };
-  $("#origin").innerHTML = `<option value="">Selecciona el origen</option>${group(og)}<option value="__custom">Coordenadas personalizadas…</option>`;
-  $("#destination").innerHTML = `<option value="">Selecciona el destino</option>${group(dg)}<option value="__custom">Coordenadas personalizadas…</option>`;
+  $("#origin").innerHTML = `<option value="">Selecciona el origen</option>${group(ents)}<option value="__custom">Coordenadas personalizadas…</option>`;
+  $("#destination").innerHTML = `<option value="">Selecciona el destino</option>${group(ents)}<option value="__custom">Coordenadas personalizadas…</option>`;
   syncForm();
 }
 
 function syncForm() {
   const t = activeTraverse();
+  $("#planning-empty").hidden = !!t;
+  $("#traverse-tools").hidden = !t;
   for (const role of ["origin", "destination"]) {
     const p = t?.[role];
     const sel = $(`#${role}`);
@@ -86,11 +95,13 @@ function syncForm() {
   }
   $("#waypoint-list").innerHTML = (t?.waypoints || []).map((w, i) => `<div class="wp"><span>${icon("pin")} ${esc(w.name || `WP ${i + 1}`)}</span>
       <button class="btn btn-icon" style="width:22px;min-height:22px" data-rm-wp="${i}" aria-label="Quitar waypoint">${icon("x")}</button></div>`).join("");
+  ctx.emit("planning-form");
   renderVariants();
 }
 
 function setEndpoint(role, p) {
-  const t = ensureTraverse();
+  const t = selectedTraverse();
+  if (!t) return;
   t[role] = p;
   invalidate(t);
   syncForm();
@@ -113,7 +124,8 @@ function coordEdit(role) {
 }
 
 export function addWaypointToRoute(w) {
-  const t = ensureTraverse();
+  const t = selectedTraverse();
+  if (!t) return;
   t.waypoints.push({ id: w.id, lat: w.lat, lon: w.lon, name: w.name });
   invalidate(t, "Waypoint añadido a la travesía");
   syncForm();
@@ -121,11 +133,11 @@ export function addWaypointToRoute(w) {
 
 /** Any geometric change discards the computed route until recalculated. */
 export function invalidate(t, msg) {
-  if (t.result) {
-    t.result = null;
-    t.status = "draft";
-    if (msg) toast(msg, "warn", 2200);
-  }
+  if (t.result && msg) toast(msg, "warn", 2200);
+  t.result = null;
+  t.status = "draft";
+  t.error = null;
+  t.revision = (t.revision || 0) + 1;
   t.saved = false;
   persist();
   renderTraverses();
@@ -133,54 +145,51 @@ export function invalidate(t, msg) {
   refreshScene();
 }
 
-function params() {
-  const p = ctx.cur.params;
-  return {
-    max_slope_deg: p.max_slope_deg || null,
-    walkback_limit_m: p.walkback_limit_m || null,
-    reserve_fraction: p.reserve_fraction ?? null,
-    speed_mps: p.speed_mps || null,
-    weights: { hazard: p.w_hazard, context: p.w_context },
-  };
+function params(t) {
+  const { w_hazard = 1, w_context = 0.6, ...values } = t.params || {};
+  const allowed = PARAMS.map(([key]) => key);
+  return { ...Object.fromEntries(Object.entries(values).filter(([key, value]) => allowed.includes(key) && value != null)),
+    weights: { hazard: w_hazard, context: w_context } };
 }
 
 export async function calculate() {
-  const t = ensureTraverse();
+  const t = selectedTraverse();
+  if (!t) return;
   if (!t.origin || !t.destination) { toast("Selecciona origen y destino", "warn"); return; }
+  const session = ctx.cur;
+  const revision = t.revision = (t.revision || 0) + 1;
   const btn = $("#calculate");
   btn.disabled = true;
-  btn.innerHTML = `${icon("route")} Calculando…`;
+  btn.innerHTML = icon("route") + " Calculando…";
   $("#route-alert").innerHTML = "";
-  const originEnt = ctx.entities.find((e) => e.id === t.origin.id);
-  const body = {
-    region_key: ctx.region.key, session_id: ctx.cur.id,
-    origin: { lat: t.origin.lat, lon: t.origin.lon, id: t.origin.id || null, kind: t.origin.kind || null },
-    destination: { lat: t.destination.lat, lon: t.destination.lon, id: t.destination.id || null },
-    waypoints: t.waypoints.map((w) => ({ lat: w.lat, lon: w.lon, id: w.id })),
-    asset_id: isMobile(originEnt) ? originEnt.id : null,
-    profile: isMobile(originEnt) ? originEnt.kind : "rover",
-    params: params(),
-  };
+  const body = { region_key: ctx.region.key, session_id: session.id,
+    origin: t.origin, destination: t.destination, waypoints: t.waypoints, params: params(t) };
+  const current = () => ctx.cur === session && t === activeTraverse();
   try {
-    const res = await api.route(body);
-    t.result = res;
+    const result = await api.route(body);
+    if (t.revision !== revision || !session.traverses.includes(t)) return;
+    t.result = result;
     t.status = "calculated";
-    t.variant = res.recommended || "balanced";
+    t.variant = result.recommended;
+    t.error = null;
     t.saved = false;
-    ctx.emit("route", { traverse: t, result: res });
-    const v = currentVariant();
-    fitRoute(v.points);
-    toast(`Ruta calculada: ${fmt.m(v.metrics.distance_m)} (${v.label})`, "safe", 2500);
+    if (current()) {
+      const variant = currentVariant();
+      ctx.emit("route", { traverse: t, result });
+      if (ctx.cur.mode === "plan") fitRoute(variant?.points || result.direct.points);
+      toast(variant ? "Travesía calculada" : "Distancia directa calculada", "safe", 2500);
+    }
   } catch (e) {
+    if (t.revision !== revision || !session.traverses.includes(t)) return;
     t.result = null;
     t.status = "infeasible";
-    showInfeasible(e.body || { detail: e.message });
+    t.error = e.body || { detail: e.message };
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `${icon("route")} Calcular`;
+    btn.innerHTML = icon("route") + " Calcular";
     persist();
-    renderTraverses();
-    renderVariants();
+    if (ctx.cur === session) renderTraverses();
+    if (current()) renderVariants();
     refreshScene();
   }
 }
@@ -188,7 +197,7 @@ export async function calculate() {
 export function fitRoute(points) {
   if (!points?.length) return;
   const lats = points.map((p) => p.lat), lons = points.map((p) => p.lon);
-  const pad = 0.02;
+  const pad = Math.max(0.001, (Math.max(...lats) - Math.min(...lats)) * 0.2, (Math.max(...lons) - Math.min(...lons)) * 0.2);
   ctx.map2d.fitBBox({ lat_min: Math.min(...lats) - pad, lat_max: Math.max(...lats) + pad, lon_min: Math.min(...lons) - pad, lon_max: Math.max(...lons) + pad });
   if (ctx.map3d && ctx.cur.view === "3d") {
     const mid = points[Math.floor(points.length / 2)];
@@ -196,31 +205,41 @@ export function fitRoute(points) {
   }
 }
 
-export function showInfeasible(b) {
-  const reasons = {
-    destino_slope: "Destino en pendiente prohibida", destino_hazard: "Destino en zona prohibida",
-    origen_hazard: "Origen en zona prohibida", walkback_exceeded: "Excede el walkback a pie",
-    no_path: "Sin corredor transitable", static_asset: "Activo estático no enrutable",
-    destino_outside: "Destino fuera de la región", origen_outside: "Origen fuera de la región",
-  };
-  $("#route-alert").innerHTML = `<div class="alert-card infeasible-card" data-reason="${esc(b.reason || "error")}">
-    <strong>${icon("alert")} Ruta imposible — ${esc(reasons[b.reason] || "No factible")}</strong>
-    <div style="margin-top:4px;font-size:12px">${esc(b.detail || "")}</div>
-    <div style="margin-top:4px;font-size:11px;opacity:.85">Ajusta destino, umbrales o waypoints. La vida tiene prioridad sobre la ciencia.</div></div>`;
+export function showInfeasible(error) {
+  const reasons = error.reasons || [];
+  $("#route-alert").innerHTML = `<div class="alert-card infeasible-card" data-reason="${esc(error.reason || "error")}">
+    <strong>${icon("alert")} Travesía inviable</strong>
+    <div>${esc(error.detail || "No se pudo calcular la travesía.")}</div>
+    ${reasons.length > 1 ? `<ol>${reasons.map((item) => `<li>${esc(item.role ? item.role + " · " + item.detail : item.detail)}</li>`).join("")}</ol>` : ""}</div>`;
 }
 
 function renderVariants() {
   const t = activeTraverse();
   const el = $("#variants");
-  if (!t?.result) { el.innerHTML = ""; if (t?.status !== "infeasible") $("#route-alert").innerHTML = ""; return; }
-  const r = t.result;
-  el.innerHTML = r.variants.map((v) => {
-    const m = v.metrics;
-    const pnr = v.pnr ? (v.pnr.show_pnr ? `<span style="color:var(--danger)">PNR</span>` : `<span style="color:var(--safe)">ida y vuelta OK</span>`) : `<span class="dim">sin métricas de activo</span>`;
-    return `<button class="variant ${v.variant === t.variant ? "active" : ""}" data-variant="${v.variant}" aria-pressed="${v.variant === t.variant}">
-      <b>${esc(v.label)}</b>${pnr}<small>${fmt.m(m.distance_m)} · ${fmt.dur(m.duration_s)} · riesgo ${fmt.num(m.risk_mean, 2)}</small></button>`;
-  }).join("") + (r.static_origin ? `<div class="dim" style="font-size:11px">${esc(r.metrics_suppressed_reason)}</div>` : "");
-  $$(".variant", el).forEach((b) => b.addEventListener("click", () => { t.variant = b.dataset.variant; persist(); renderVariants(); renderTraverses(); refreshScene(); ctx.emit("route", { traverse: t, result: r }); }));
+  const result = t?.result;
+  const measurement = result?.static_origin;
+  for (const id of ["metrics", "nearby-pois", "replan", "show-direct", "show-calculated"]) {
+    $(`#${id}`).hidden = !!measurement;
+  }
+  $("#mission-params").hidden = !!measurement || (!!t?.origin && !isMobile(t.origin));
+  $("#save-route").disabled = !result;
+  $$("[data-export]").forEach((button) => { button.disabled = !result || !!measurement; });
+  if (t?.error) showInfeasible(t.error);
+  else $("#route-alert").innerHTML = "";
+  el.innerHTML = "";
+  if (!result) return;
+  if (measurement) {
+    el.innerHTML = `<div class="variant"><b>Distancia euclídea</b><small>${fmt.m(result.direct.distance_m)}</small></div>`;
+    return;
+  }
+  const route = currentVariant();
+  if (!route) return;
+  const pnr = route.pnr?.pnr_point;
+  el.innerHTML = `<div class="variant"><b>Ruta de travesía</b>
+    <small>${fmt.m(route.metrics.distance_m)} · ${fmt.dur(route.metrics.duration_s)}</small>
+    <small class="return-safe"><i></i> Retorno con reserva${pnr ? " hasta el PNR" : " en todo el recorrido"}</small>
+    ${pnr ? `<small class="return-limited"><i></i> Retorno no garantizado desde el PNR</small>
+    <small class="mono">PNR · ${fmt.lat(pnr.lat)}, ${fmt.lon(pnr.lon)} · ${fmt.m(pnr.distance_m)} desde el origen</small>` : ""}</div>`;
 }
 
 function toggleRoute(key, sel) {
@@ -253,29 +272,47 @@ async function replan() {
   const t = activeTraverse();
   const v = currentVariant();
   if (!t || !v) { toast("No hay ruta que replanificar", "warn"); return; }
+  const revision = t.revision = (t.revision || 0) + 1;
+  const session = ctx.cur;
   const obstacles = [];
   try {
     const h = await api.harness();
     h.active.filter((a) => a.kind === "obstacle" && a.params?.lat).forEach((a) => obstacles.push({ lat: a.params.lat, lon: a.params.lon, radius_m: a.params.radius_m || 400 }));
   } catch { /* offline */ }
+  if (t.revision !== revision || !session.traverses.includes(t)) return;
   const originEnt = ctx.entities.find((e) => e.id === t.origin.id);
   try {
     const res = await api.replan({ region_key: ctx.region.key, current: t.origin, destination: t.destination,
-      route_points: v.points, obstacles, profile: isMobile(originEnt) ? originEnt.kind : "rover", asset_id: isMobile(originEnt) ? originEnt.id : null });
+      route_points: v.points, obstacles, session_id: session.id, params: params(t),
+      profile: isMobile(originEnt) ? originEnt.kind : "rover", asset_id: isMobile(originEnt) ? originEnt.id : null });
+    if (t.revision !== revision || !session.traverses.includes(t)) return;
     if (!res.replanned) { toast(`Replanificación: nominal. ${res.reason}`, "safe"); return; }
     v.points = res.route_points;
     v.metrics = res.metrics;
     v.pnr = res.pnr;
+    t.error = null;
     persist();
+    renderTraverses();
+    if (activeTraverse() === t) renderVariants();
     refreshScene();
     toast(`Replanificada: ${res.reason}`, res.evasion_ok ? "safe" : "warn");
-  } catch (e) { showInfeasible(e.body || { detail: e.message }); }
+  } catch (e) {
+    if (t.revision !== revision || !session.traverses.includes(t)) return;
+    t.result = null;
+    t.error = e.body || { detail: e.message };
+    t.status = "infeasible";
+    persist();
+    renderTraverses();
+    if (activeTraverse() === t) renderVariants();
+    refreshScene();
+  }
 }
 
 export function deleteRoute() {
   const t = activeTraverse();
   if (!t) return;
-  t.result = null; t.origin = null; t.destination = null; t.waypoints = []; t.saved = false; t.status = "draft";
+  t.origin = null; t.destination = null; t.waypoints = [];
+  invalidate(t);
   $("#route-alert").innerHTML = "";
   persist();
   syncForm();
@@ -317,41 +354,65 @@ async function importRoute(e) {
 }
 
 // ------------------------------------------------------------------ mission parameters
+const PARAMS = [
+  ["max_slope_deg", "Pendiente máxima (°)", 1, 30, 0.1, null],
+  ["walkback_limit_m", "Walkback EVA (m)", 1000, 2000, 1, 2000],
+  ["reserve_fraction", "Reserva general (fracción)", 0, 0.8, 0.01, 0.25],
+  ["reserve_o2_fraction", "Reserva de oxígeno (fracción)", 0, 0.8, 0.01, null],
+  ["reserve_water_fraction", "Reserva de agua (fracción)", 0, 0.8, 0.01, null],
+  ["reserve_battery_fraction", "Reserva de batería (fracción)", 0, 0.8, 0.01, null],
+  ["speed_mps", "Velocidad (m/s)", 0.1, 5, 0.01, null],
+  ["ltst_h", "Hora solar marciana", 0, 24, 0.1, 13],
+  ["tau", "Profundidad óptica del polvo (τ)", 0, 10, 0.01, 0.5],
+  ["min_temperature_c", "Temperatura mínima (°C)", -170, 80, 1, -105],
+  ["max_temperature_c", "Temperatura máxima (°C)", -160, 100, 1, 45],
+  ["max_dust_tau", "Polvo máximo (τ)", 0.01, 10, 0.01, 3],
+  ["min_light_w_m2", "Insolación mínima (W/m²)", 0.1, 500, 0.1, 0.1],
+  ["min_link_db", "Margen de enlace mínimo (dB)", -40, 40, 0.5, 0],
+  ["max_blackout_s", "Corte de enlace máximo (s)", 0, 7200, 1, 900],
+  ["max_distance_m", "Longitud máxima (m)", 1, 500000, 1, null],
+  ["w_hazard", "Peso de peligro", 0, 3, 0.1, 1],
+  ["w_context", "Peso contextual", 0, 2, 0.1, 0.6],
+];
+
 function buildParams() {
   const box = $("#mission-params .params");
-  const rows = [
-    ["max_slope_deg", "Pendiente máx. (°)", 8, 30, 1, "auto"],
-    ["walkback_limit_m", "Walkback EVA (m)", 1000, 2000, 50],
-    ["reserve_fraction", "Reserva de recursos", 0.05, 0.5, 0.05, "auto"],
-    ["speed_mps", "Velocidad (m/s)", 0.1, 3, 0.05, "auto"],
-    ["w_hazard", "Peso de peligro", 0, 3, 0.1],
-    ["w_context", "Peso contextual", 0, 2, 0.1],
-  ];
-  box.innerHTML = rows.map(([k, l, mn, mx, st, auto]) => `<label for="p-${k}">${l} <b id="pv-${k}"></b></label>
-    <input type="range" class="range" id="p-${k}" data-param="${k}" min="${mn}" max="${mx}" step="${st}" ${auto ? `data-auto="1"` : ""} />`).join("")
-    + `<div class="reset-row"><button class="btn" id="params-reset">${icon("reset")} Valores por defecto</button></div>
-       <p class="dim" style="font-size:10px;margin:6px 0 0">«auto» usa el valor del activo (rover 20°, astronauta 25°) o del modelo.</p>`;
+  box.innerHTML = PARAMS.map(([key, label, min, max, step, fallback]) => `
+    <label for="p-${key}" ${["walkback_limit_m", "reserve_o2_fraction", "reserve_water_fraction"].includes(key) ? "data-eva-only" : ""}>${label}</label>
+    <div class="numeric-pair" ${["walkback_limit_m", "reserve_o2_fraction", "reserve_water_fraction"].includes(key) ? "data-eva-only" : ""}>
+      <input class="range" type="range" data-param="${key}" min="${min}" max="${max}" step="${step}" aria-label="${label} (deslizador)">
+      <input class="input mono" id="p-${key}" type="number" data-param="${key}" min="${min}" max="${max}" step="any" placeholder="${fallback ?? "Auto"}">
+    </div>`).join("") + `
+    <button class="btn" id="params-reset">${icon("reset")} Restablecer</button>
+    <p class="dim small">La reserva del 25 % deja hasta el 75 % de cada recurso para la ida. Los límites sin valor usan el perfil del activo.</p>`;
   const sync = () => {
-    const p = ctx.cur.params;
-    rows.forEach(([k, , mn]) => {
-      const inp = $(`#p-${k}`);
-      const v = p[k];
-      inp.value = v ?? mn;
-      $(`#pv-${k}`).textContent = v == null ? "auto" : (k === "reserve_fraction" ? `${Math.round(v * 100)}%` : v);
-    });
+    const traverse = activeTraverse();
+    const values = traverse?.params || {};
+    $$("[data-eva-only]", box).forEach((el) => { el.hidden = traverse?.origin?.kind !== "astronaut"; });
+    for (const [key, , min, , , fallback] of PARAMS) {
+      const [slider, number] = box.querySelectorAll(`[data-param="${key}"]`);
+      slider.value = values[key] ?? fallback ?? min;
+      number.value = values[key] ?? fallback ?? "";
+    }
   };
-  box.addEventListener("input", (e) => {
-    const k = e.target.dataset.param;
-    if (!k) return;
-    ctx.cur.params[k] = parseFloat(e.target.value);
+  box.addEventListener("change", (e) => {
+    const { param } = e.target.dataset;
+    const t = activeTraverse();
+    if (!param || !t) return;
+    if (!e.target.reportValidity()) return;
+    t.params ||= {};
+    if (e.target.value === "") delete t.params[param];
+    else t.params[param] = e.target.valueAsNumber;
     sync();
-    persist();
+    invalidate(t);
   });
   $("#params-reset").addEventListener("click", () => {
-    Object.assign(ctx.cur.params, { max_slope_deg: null, walkback_limit_m: 2000, reserve_fraction: null, speed_mps: null, w_hazard: 1, w_context: 0.6 });
+    const t = activeTraverse();
+    if (!t) return;
+    t.params = {};
     sync();
-    persist();
+    invalidate(t);
   });
-  ctx.on("session", sync);
+  ctx.on("planning-form", sync);
   sync();
 }

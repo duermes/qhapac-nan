@@ -2,7 +2,7 @@
 import numpy as np
 
 from api.schemas import RouteRequest
-from conftest import BASE, DELTA, needs_mola, read
+from conftest import ROVER, BASE, DELTA, needs_mola, read
 from khipu.resources import evaluate_pnr
 
 
@@ -28,7 +28,8 @@ def test_pnr_astronaut_eva_oxygen_reserve_thresholds():
 
 @needs_mola
 def test_multi_route_variants_incorporate_pnr_metadata(client):
-    j = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "asset_id": "ROVER_RS3"}).json()
+    j = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "asset_id": "ROVER_PR1"}).json()
+    assert len(j["variants"]) == 1
     for v in j["variants"]:
         for k in ("status", "pnr_index", "segments", "outbound_total", "return_total", "asymmetry"):
             assert k in v["pnr"]
@@ -36,16 +37,16 @@ def test_multi_route_variants_incorporate_pnr_metadata(client):
 
 def test_route_plan_request_pnr_defaults():
     r = RouteRequest(origin={"lat": 18.4, "lon": 77.4}, destination={"lat": 18.5, "lon": 77.5})
-    assert r.variants is True and r.params.reserve_fraction is None and r.params.walkback_limit_m is None
+    assert r.variants is False and r.params.reserve_fraction is None and r.params.walkback_limit_m is None
 
 
 @needs_mola
 def test_infeasible_route_alert_card_structure_and_behavior(client):
-    r = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 18.53, "lon": 77.42}})
+    r = client.post("/api/route", json={"origin": ROVER, "destination": {"lat": 18.53, "lon": 77.42}})
     j = r.json()
     assert r.status_code == 422 and j["feasible"] is False and j["reason"] == "destino_hazard" and j["detail"]
     p = read("console/js/planning.js")
-    assert "infeasible-card" in p and "Ruta imposible" in p
+    assert "infeasible-card" in p and "Travesía inviable" in p
 
 
 def test_pnr_evaluation_section_in_metrics_deck():
@@ -83,4 +84,4 @@ def test_traverse_rack_interactive_inline_rename():
 @needs_mola
 def test_static_non_mobile_node_plan_suppression(client):
     r = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "asset_id": "ANT_RELAY"})
-    assert r.status_code == 422 and r.json()["reason"] == "static_asset"
+    assert r.status_code == 200 and r.json()["static_origin"] and not r.json()["variants"]

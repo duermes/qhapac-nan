@@ -42,8 +42,8 @@ def test_route_display_toggles_direct_and_calculated():
 @needs_mola
 def test_static_origin_planning_suppresses_rover_metrics(client):
     j = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 18.36, "lon": 77.65}}).json()
-    assert j["static_origin"] is True and j["metrics_suppressed_reason"]
-    assert all(v["pnr"] is None and v["asset_metrics"] is None for v in j["variants"])
+    assert j["static_origin"] is True and j["variants"] == []
+    assert j["direct"]["distance_m"] > 0
 
 
 def test_catmull_rom_smoothing_backend():

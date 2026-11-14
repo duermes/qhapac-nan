@@ -138,23 +138,58 @@ export class Map3D {
   }
 
   setRoutes(routes) {
-    this.overlay.children.filter((o) => o.userData.route).forEach((o) => { this.overlay.remove(o); o.geometry.dispose(); });
-    const col = { safe: 0x3fbf7f, caution: 0xe8a33d, no_return: 0xe0534a };
-    for (const rt of routes) {
-      if (rt.visible === false || !rt.points?.length) continue;
-      const lift = 25 * this.opts.exaggeration;  // elevation offset keeps the line above the mesh
-      const pts = rt.points.map((p) => this.toWorld(p.lat, p.lon, lift));
-      const colors = [];
-      const base = new THREE.Color(rt.color || "#f0a24b");
-      const segState = {};
-      (rt.segments || []).forEach((s) => { segState[s.to] = s.state; });
-      pts.forEach((_, i) => { const c = segState[i] ? new THREE.Color(col[segState[i]]) : base; colors.push(c.r, c.g, c.b); });
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true }));
-      line.renderOrder = 10;     // drawn above raster mantle
-      line.userData.route = rt.id || true;
-      this.overlay.add(line);
+    this.overlay.children.filter((o) => o.userData.route).forEach((o) => {
+      this.overlay.remove(o);
+      if (!o.isSprite) o.geometry.dispose();
+      o.material.map?.dispose();
+      o.material.dispose();
+    });
+    const colors = { safe: 0x65d8ff, caution: 0x65d8ff, no_return: 0xff8c36 };
+    for (const route of routes) {
+      if (route.visible === false || route.points?.length < 2) continue;
+      const lift = 25 * this.opts.exaggeration;
+      const points = route.points.map((p) => this.toWorld(p.lat, p.lon, lift));
+      const material = { depthTest: false, color: route.color || "#65d8ff" };
+      const tag = (obj) => {
+        obj.renderOrder = 10;
+        obj.userData.route = route.id || true;
+        this.overlay.add(obj);
+      };
+      if (route.segments?.length) {
+        const runs = new Map();
+        for (const { from, to, state } of route.segments) {
+          if (!points[from] || !points[to]) continue;
+          const color = colors[state] || material.color;
+          if (!runs.has(color)) runs.set(color, []);
+          runs.get(color).push(points[from], points[to]);
+        }
+        for (const [color, segments] of runs) {
+          tag(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(segments),
+            new THREE.LineBasicMaterial({ ...material, color })));
+        }
+      } else {
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geo, route.dash ? new THREE.LineDashedMaterial({
+          ...material, dashSize: 90, gapSize: 60,
+        }) : new THREE.LineBasicMaterial(material));
+        if (route.dash) line.computeLineDistances();
+        tag(line);
+      }
+      if (route.pnr) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 128; canvas.height = 48;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#20160f"; ctx.fillRect(34, 5, 91, 38);
+        ctx.fillStyle = "#ff9c61";
+        ctx.beginPath(); ctx.moveTo(15, 7); ctx.lineTo(29, 38); ctx.lineTo(1, 38); ctx.fill();
+        ctx.font = "bold 27px monospace"; ctx.fillText("PNR", 46, 33);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false, sizeAttenuation: false,
+        }));
+        sprite.position.copy(this.toWorld(route.pnr.lat, route.pnr.lon, lift));
+        sprite.center.set(0.12, 0.5); sprite.scale.set(0.048, 0.018, 1);
+        tag(sprite);
+      }
     }
   }
 
@@ -184,7 +219,8 @@ export class Map3D {
       const el = document.createElement("div");
       el.className = `m3d m3d-${e.kind}`;
       el.style.cssText = `position:absolute;transform:translate(-50%,-100%);font:500 11px 'Chakra Petch';color:#f3ebdc;white-space:nowrap;text-align:center`;
-      el.innerHTML = `<div class="m3d-label" style="background:rgba(16,22,18,.82);border:1px solid rgba(223,189,128,.25);padding:2px 6px">${e.name}</div><div style="width:9px;height:9px;margin:2px auto 0;border:2px solid ${reg.color};border-radius:${["poi", "sample", "rover", "astronaut", "antenna"].includes(e.kind) ? "50%" : "0"};background:#0b100d"></div>`;
+      el.innerHTML = `<div class="m3d-label" style="background:rgba(16,22,18,.82);border:1px solid rgba(223,189,128,.25);padding:2px 6px"></div><div style="width:9px;height:9px;margin:2px auto 0;border:2px solid ${reg.color};border-radius:${["poi", "sample", "rover", "astronaut", "antenna"].includes(e.kind) ? "50%" : "0"};background:#0b100d"></div>`;
+      el.querySelector(".m3d-label").textContent = e.name;
       this.labelLayer.appendChild(el);
       return { e, el, rank: e.kind === "base" ? 0 : ["poi", "rover"].includes(e.kind) ? 1 : 2 };
     });
@@ -257,8 +293,16 @@ export class Map3D {
     c.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
     c.addEventListener("pointerup", (e) => {
       if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 4) {
-        const ll = this.pick(e.clientX, e.clientY);
-        if (ll) this.emit("click", ll);
+        const bounds = c.getBoundingClientRect();
+        const screen = { x: e.clientX - bounds.left, y: e.clientY - bounds.top };
+        const hit = this.markers?.find(({ el }) => {
+          const r = el.getBoundingClientRect();
+          return !el.hidden && el.style.display !== "none" && r.width > 0 &&
+            e.clientX >= r.left - 5 && e.clientX <= r.right + 5 &&
+            e.clientY >= r.top - 5 && e.clientY <= r.bottom + 5;
+        })?.e;
+        const ll = hit || this.pick(e.clientX, e.clientY);
+        if (ll) this.emit("click", ll, hit, screen);
       }
       down = null;
     });

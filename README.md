@@ -17,13 +17,23 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 
 `scripts/bootstrap_data.py` necesita el original NASA en `data/official_kickoff/raw/mola/` (el script imprime las URLs de PDS si falta). Sin datos la app arranca en estado vacío y **no inventa elevaciones**.
 
+## Operación
+
+- **Hatun Wasi.** Crea una travesía en el rack de Planificar antes de elegir sus puntos. Origen móvil usa una ruta operativa de Khipu. Para un origen estático se muestra la distancia directa. Enfocar está junto a Nuevo punto y Leyenda.
+- **Khipu.** El celeste marca el tramo con reserva para regresar. El naranja marca el tramo posterior al punto de no retorno (PNR). La ida debe conservar la reserva vital: 25 % de la capacidad de cada recurso por defecto, ajustable por travesía. La hora solar nominal de planificación es 13:00 local de Marte y se puede simular otra condición.
+- **Chaski.** Pulsa el botón de capa para recorrer las vistas del mapa. Khipu Voz admite selección directa. Las flechas, zoom y centrado actúan sobre la cámara. Los paneles se pueden plegar juntos o por ventana.
+- **Ñawi.** Usa C para cambiar de perspectiva y E para interactuar con objetivos, muestras, equipos o la esclusa. En pantalla táctil, toca la escena externa para volver al visor.
+
 ## Verificación
 
 ```bash
-.venv/bin/python -m pytest                       # suite por capacidad (nombres = casos de referencia)
-.venv/bin/python -m playwright install chromium  # una vez
-.venv/bin/python tests/e2e/walkthrough.py http://127.0.0.1:8000 /tmp/qn_e2e   # recorrido UI con capturas
+.venv/bin/python -m pytest
+node --test tests/eva_comfort.test.mjs
+.venv/bin/python -m playwright install chromium
+.venv/bin/python tests/e2e/operational_traverse.py http://127.0.0.1:8765 /tmp/qn_e2e
 ```
+
+Para el recorrido de navegador inicia el servidor de pruebas en el puerto 8765 con un directorio `QN_STATE_DIR` aislado. El recorrido utiliza ese servidor para guardar travesías y contingencias de prueba.
 
 ## Estructura
 
@@ -34,7 +44,7 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | `api/` | FastAPI: contratos Pydantic (`schemas.py`), servicio del motor (`engine.py`), rutas y páginas (`app.py`). |
 | `web/` | `home/` portal, `console/` Hatun Wasi, `rover/` Chaski, `hud/` Ñawi, `shared/` (estilos, fuentes OFL locales, mapa 2D/3D, cliente Khipu, voz) y `vendor/three/` (Three.js 0.170.0). |
 | `data/` | `official_kickoff/raw/` originales NASA (no versionados), `manifest.json`, `processed/generated/` derivados regenerables, `fixtures/synthetic/scenario.json` escenario sintético, `cache/`, `userstate/`. |
-| `tests/` | pytest por capacidad y `e2e/walkthrough.py` (Playwright). |
+| `tests/` | pytest por capacidad, controles EVA con Node y recorrido operativo de Playwright. |
 
 ## Datos y procedencia
 

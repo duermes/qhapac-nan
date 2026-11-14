@@ -1,7 +1,7 @@
 """REF-129..138."""
 import json
 
-from conftest import BASE, ROOT, WEB, needs_mola, read
+from conftest import ROVER, EVA, BASE, ROOT, WEB, needs_mola, read
 from khipu.domain import AssetKind
 
 
@@ -45,13 +45,13 @@ def test_planning_rejects_fatal_slope_crest(client):
     t = engine.terrain("jezero")
     r, c = np.unravel_index(np.nanargmax(t.slope), t.slope.shape)
     lat, lon = t.geometry.rc_to_latlon(r, c)
-    res = client.post("/api/route", json={"origin": BASE, "destination": {"lat": lat, "lon": lon}, "profile": "rover"})
+    res = client.post("/api/route", json={"origin": ROVER, "destination": {"lat": lat, "lon": lon}, "profile": "rover"})
     assert res.status_code == 422 and res.json()["reason"] == "destino_slope"
 
 
 @needs_mola
 def test_planning_rejects_exceeded_walkback_distance(client):
-    r = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 18.46, "lon": 77.40}, "profile": "astronaut"})
+    r = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.46, "lon": 77.40}, "profile": "astronaut"})
     assert r.status_code == 422 and r.json()["walkback_limit_m"] == 2000
 
 

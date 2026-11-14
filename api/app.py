@@ -193,7 +193,13 @@ def assets(session_id: str | None = None):
 @app.post("/api/assets")
 def add_asset(a: S.AssetIn):
     t = engine.regions.terrain(engine.default_region())
-    data = a.model_dump()
+    if any(a.id == p["id"] for p in engine.all_entities() if p["source"] == "scenario"):
+        raise HTTPException(409, "El identificador pertenece a un activo desplegado de solo lectura")
+    data = a.model_dump(exclude_none=True)
+    if a.kind in ("rover", "astronaut"):
+        data["virtual"] = True
+        data.setdefault("resources", {"battery_wh": 60000} if a.kind == "rover" else
+                        {"o2_kg": 1.2, "water_kg": 3.6, "battery_wh": 1100})
     if t is not None and data.get("elevation_m") is None:
         data["elevation_m"] = t.elevation_at(a.lat, a.lon)
     return ok(engine.assets.add({k: v for k, v in data.items() if k != "session_id"}, a.session_id))
@@ -201,8 +207,12 @@ def add_asset(a: S.AssetIn):
 
 @app.patch("/api/assets/{asset_id}")
 def patch_asset(asset_id: str, p: S.AssetPatch):
+    if any(asset_id == e["id"] for e in engine.all_entities() if e["source"] == "scenario"):
+        raise HTTPException(409, "Activo desplegado de solo lectura")
     try:
-        res = engine.assets.update(asset_id, p.model_dump(exclude_none=True))
+        patch = p.model_dump(exclude_none=True)
+        terrain = engine.regions.terrain(engine.default_region())
+        res = engine.assets.update(asset_id, patch, terrain=terrain)
     except PermissionError as e:
         raise HTTPException(409, str(e))
     if res is None:
@@ -212,6 +222,8 @@ def patch_asset(asset_id: str, p: S.AssetPatch):
 
 @app.delete("/api/assets/{asset_id}")
 def delete_asset(asset_id: str):
+    if any(asset_id == e["id"] for e in engine.all_entities() if e["source"] == "scenario"):
+        raise HTTPException(409, "Activo desplegado de solo lectura")
     return ok({"deleted": engine.assets.delete(asset_id)})
 
 
@@ -263,9 +275,17 @@ def _rt(mgr):
 
 @app.get("/api/layers/{field_id}")
 def layer_snapshot(field_id: str, region_key: str | None = None, stride: int = Query(2, ge=1, le=16),
-                   ltst_h: float | None = None, tau: float | None = None, alpha: float | None = None,
-                   profile: S.Profile | None = None, max_slope_deg: float | None = None, realtime: bool = False,
-                   include_grid: bool = True):
+                   ltst_h: float | None = Query(None, ge=0, le=24),
+                   tau: float | None = Query(None, ge=0, le=10),
+                   alpha: float | None = Query(None, ge=0, le=1),
+                   profile: S.Profile | None = None, max_slope_deg: float | None = Query(None, gt=0, le=45),
+                   receiver_height_m: float | None = Query(None, ge=0.1, le=20),
+                   link_margin_offset_db: float | None = Query(None, ge=-40, le=40),
+                   walkback_m: float | None = Query(None, gt=0, le=50000),
+                   helio_au: float | None = Query(None, ge=1.3, le=1.7),
+                   science_radius_scale: float | None = Query(None, ge=0.1, le=5),
+                   hazard_weight: float | None = Query(None, ge=0, le=5),
+                   realtime: bool = False, include_grid: bool = True):
     mgr = engine.manager(region_key or engine.default_region())
     if field_id not in mgr.catalog:
         raise HTTPException(404, f"layer '{field_id}' not in catalog")
@@ -273,13 +293,15 @@ def layer_snapshot(field_id: str, region_key: str | None = None, stride: int = Q
     if not d.available:
         return ok({"field_id": field_id, "available": False, "reason": d.unavailable_reason, "layer": d.describe()})
     params = {"ltst_h": ltst_h, "tau": tau, "alpha": alpha, "profile": profile, "max_slope_deg": max_slope_deg,
-              "realtime": realtime}
+              "receiver_height_m": receiver_height_m, "link_margin_offset_db": link_margin_offset_db,
+              "walkback_m": walkback_m, "helio_au": helio_au, "science_radius_scale": science_radius_scale,
+              "hazard_weight": hazard_weight, "realtime": realtime}
     if engine.harness.active:
         ov = engine.harness.apply({"tau": tau if tau is not None else 0.5, "link_margin_db": 0.0})
-        if field_id in ("dust", "temperature", "insolation", "traversability", "survival_astronaut", "survival_rover"):
+        if "tau" in d.describe()["controls"]:
             params["tau"] = ov["tau"]
         if field_id in ("telecom", "survival_astronaut", "survival_rover"):
-            params["link_margin_offset_db"] = -ov["link_margin_db"]
+            params["link_margin_offset_db"] = (link_margin_offset_db or 0) - ov["link_margin_db"]
     snap = mgr.snapshot(field_id, {k: v for k, v in params.items() if v is not None and v is not False})
     lo, hi = (d.range_hint if d.range_hint else (None, None))
     out = {"field_id": field_id, "available": True, "layer": d.describe(), "params": snap.params, "stats": snap.stats(),
@@ -435,6 +457,15 @@ def eva_vitals(req: S.EvaVitalsRequest):
     alerts = []
     if left["o2"] * 60 < 30:
         alerts.append({"level": "critical", "code": "O2_LOW", "text": f"O₂ para {left['o2'] * 60:.0f} min"})
+    nominal = met.SuitConsumables()
+    for code, label, remaining, capacity in (
+            ("O2_RESERVE", "Oxígeno", req.o2_kg, nominal.o2_kg),
+            ("WATER_RESERVE", "Agua", req.water_kg, nominal.water_kg),
+            ("BATTERY_RESERVE", "Batería", req.battery_wh, nominal.battery_wh)):
+        fraction = remaining / capacity
+        if fraction <= 0.25:
+            alerts.append({"level": "critical" if fraction <= 0.1 else "warning", "code": code,
+                           "text": f"{label} al {fraction:.0%}: dentro de la reserva del traje."})
     if req.distance_to_base_m > wb["walkback_m"]:
         alerts.append({"level": "critical", "code": "WALKBACK", "text": "Fuera del radio de retorno a pie"})
     elif req.distance_to_base_m > 0.8 * wb["walkback_m"]:
@@ -454,8 +485,9 @@ def eva_vitals(req: S.EvaVitalsRequest):
 
 @app.post("/api/eva/surface-route")
 def eva_surface_route(req: S.EvaSurfaceRoute):
+    from khipu import navigation
     from khipu.geodesy import haversine_m
-    from khipu.resources import evaluate_pnr, route_metrics
+    from khipu.resources import route_metrics
 
     asset = engine.find_entity(req.asset_id)
     if not asset or asset.get("kind") != "astronaut":
@@ -463,12 +495,20 @@ def eva_surface_route(req: S.EvaSurfaceRoute):
     base = next((a for a in engine.scenario["assets"] if a["kind"] == "base"), None)
     points = [p.model_dump() for p in req.points]
     if base is None or any(haversine_m(base["lat"], base["lon"], p["lat"], p["lon"]) > 2000 for p in points):
-        raise HTTPException(422, "La ruta excede el radio de retorno a pie")
-    metrics = route_metrics(points, "astronaut", 1.4)
-    if metrics["max_grade_deg"] > 30:
-        raise HTTPException(422, "La ruta cruza una pendiente no transitable")
-    available = min(req.available_o2_kg, max(0, engine.ledger(req.asset_id, "astronaut").remaining))
-    return ok({"points": points, "metrics": metrics, "pnr": evaluate_pnr(points, "astronaut", available=available, speed_mps=1.4),
+        raise RouteInfeasible("walkback_exceeded", "La ruta excede el radio de retorno a pie")
+    params = {"max_distance_m": 2000}
+    terrain, costmap, link = engine.operational_costmap(engine.default_region(), "astronaut", params, asset=asset)
+    navigation.check_endpoints(terrain, costmap, [((points[0]["lat"], points[0]["lon"]), "origen"),
+                                                  ((points[-1]["lat"], points[-1]["lon"]), "destino")])
+    navigation.check_surface_geometry(terrain, costmap, points)
+    if route_metrics(points, "astronaut")["max_grade_deg"] > costmap.params.slope_limit():
+        navigation.forbid([navigation.issue("slope", "El sendero de entrenamiento cruza una pendiente no transitable.")])
+    telemetry = {key: value for key, value in {"o2_kg": req.available_o2_kg, "water_kg": req.available_water_kg,
+                                                "battery_wh": req.available_battery_wh}.items() if value is not None}
+    points, metrics, pnr, issues = engine.evaluate_corridor(terrain, points, "astronaut", params, asset, link, 1.4, telemetry)
+    if issues:
+        navigation.forbid(issues)
+    return ok({"points": points, "metrics": metrics, "pnr": pnr,
                "provenance": "synthetic", "terrain_model": "MOLA regional + relieve local de entrenamiento"})
 
 

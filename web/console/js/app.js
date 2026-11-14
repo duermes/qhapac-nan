@@ -34,7 +34,7 @@ export function newSession(seed = {}) {
   return {
     id: `S${sessionSeq}`, view: "2d", mode: "plan", cam2d: null, cam3d: null,
     eyes: { analyze: true, plan: true }, layers: {}, activeLayer: null, hidden: [],
-    traverses: [], activeTraverse: null, showDirect: true, showCalc: true, params: defaultParams(),
+    traverses: [], activeTraverse: null, showDirect: false, showCalc: true, params: defaultParams(),
     addMode: false, ...seed,
   };
 }
@@ -52,19 +52,22 @@ export function persist() {
 
 function serializeSession(s) {
   const c = { ...s };
-  c.traverses = s.traverses.map((t) => ({ ...t, result: t.result ? slimResult(t.result) : null }));
+  c.traverses = s.traverses.map(({ revision, ...t }) => t);
   return c;
 }
-function slimResult(r) {
-  return { ...r, variants: r.variants.map((v) => ({ ...v, points: v.points.filter((_, i) => i % 2 === 0 || i === v.points.length - 1) })) };
-}
-
 async function restore() {
   let ws = null;
   try { ws = await api.workspace(); } catch { /* offline */ }
   if (!ws?.sessions?.length) { try { ws = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch { ws = null; } }
   if (ws?.sessions?.length) {
-    ctx.sessions = ws.sessions.map((s) => ({ ...newSession(), ...s, params: { ...defaultParams(), ...(s.params || {}) } }));
+    ctx.sessions = ws.sessions.map((s) => ({
+      ...newSession(), ...s, params: { ...defaultParams(), ...(s.params || {}) },
+      traverses: (s.traverses || []).map((t) => {
+        const legacy = t.result && !("operational_route" in t.result);
+        return { ...t, params: t.params || { ...s.params },
+          ...(legacy ? { result: null, status: "draft", saved: false } : {}) };
+      }),
+    }));
     sessionSeq = Math.max(...ctx.sessions.map((s) => +s.id.slice(1) || 0));
     ctx.cur = ctx.sessions.find((s) => s.id === ws.current) || ctx.sessions[0];
     return true;
@@ -134,6 +137,8 @@ export async function applySession() {
     ctx.map3d.camera.position.fromArray(s.cam3d.pos);
     ctx.map3d.controls.target.fromArray(s.cam3d.target);
   } else if (ctx.map3d && !s.cam3d) ctx.map3d.resetCamera();
+  await reloadAssets();
+  if (ctx.cur !== s) return;
   setMode(s.mode, true);
   ctx.emit("session", s);
   refreshScene();
@@ -153,7 +158,7 @@ export async function setView(view, silent = false) {
       ctx.map3d = new Map3D($("#map3d"), ctx.region);
       if (ctx.sun) ctx.map3d.setSun(ctx.sun.az, ctx.sun.el);
       ctx.map3d.on("hover", (ll) => updateHud(ll));
-      ctx.map3d.on("click", (ll) => ctx.emit("mapclick", { ll, hit: null, screen: null }));
+      ctx.map3d.on("click", (ll, hit, screen) => ctx.emit("mapclick", { ll, hit, screen }));
       ctx.map3d.on("frame", () => updateScaleBar());
       // keep 3D centred where the 2D camera was (context preserved)
       const c = ctx.map2d.screenToLL(ctx.map2d.w / 2, ctx.map2d.h / 2);
@@ -172,18 +177,23 @@ export async function setView(view, silent = false) {
 
 export function setMode(mode, silent = false) {
   const s = ctx.cur;
+  const previous = document.body.dataset.mode;
+  mode = ["general", "analyze", "plan"].includes(mode) ? mode : "general";
   s.mode = mode;
+  document.body.dataset.mode = mode;
   $$(".console-dock .dock-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
   $$(".console-dock .eye").forEach((e) => {
     const on = s.eyes[e.dataset.eye];
     e.setAttribute("aria-pressed", String(on));
     e.innerHTML = icon(on ? "eye" : "eyeoff");
   });
-  $("#focus-menu").hidden = mode !== "focus";
-  if (mode === "plan") { if (!s.planningCollapsed) $("#planning").hidden = false; }
+  if (mode === "plan" && previous !== "plan") ctx.decks?.legend.open();
   if (mode === "analyze") ctx.decks?.layers.open();
-  if (mode === "general") { ctx.decks?.closeAll(); }
+  else ctx.decks?.layers.close();
+  if (mode === "general") ctx.decks?.legend.close();
+  if (mode !== "plan") [ctx.decks?.metrics, ctx.decks?.nearby, ctx.decks?.risk].forEach((deck) => deck?.close());
   ctx.emit("mode", mode);
+  if (ctx.decks?.legend && !ctx.decks.legend.hidden) ctx.decks.legend.dispatchEvent(new Event("deck:open"));
   if (!silent) persist();
   refreshScene();
 }
@@ -198,10 +208,10 @@ export function routeOverlays() {
     const v = t.result.variants.find((x) => x.variant === t.variant) || t.result.variants[0];
     const active = t.id === s.activeTraverse;
     if (s.showCalc && v) {
-      out.push({ id: `${t.id}:calc`, points: v.points, color: active ? "#f0a24b" : "#c98a4a", width: active ? 3.5 : 2.5,
+      out.push({ id: `${t.id}:calc`, points: v.points, color: "#65d8ff", width: active ? 3.5 : 2.5,
         segments: v.pnr?.show_pnr ? v.pnr.segments : null, pnr: v.pnr?.show_pnr ? v.pnr.pnr_point : null });
     }
-    if (s.showDirect && active && t.result.direct) {
+    if (t.result.direct && (t.result.static_origin || (s.showDirect && active))) {
       out.push({ id: `${t.id}:direct`, points: t.result.direct.points, color: "#6fd3ff", width: 1.8, dash: [8, 6] });
     }
   }
@@ -227,9 +237,10 @@ export function refreshScene() {
     ctx.map3d.setHazards(m.hazards);
     ctx.map3d.setMarkers(ctx.entities, m.hidden);
   }
-  const lname = s.activeLayer && ctx.catalog[s.activeLayer]?.name;
+  const activeLayer = s.eyes.analyze ? s.activeLayer : null;
+  const lname = activeLayer && ctx.catalog[activeLayer]?.name;
   $("#active-layer-name").textContent = lname || "Relieve MOLA (sombreado)";
-  const prov = s.activeLayer ? ctx.catalog[s.activeLayer]?.provenance : "derived_from_nasa";
+  const prov = activeLayer ? ctx.catalog[activeLayer]?.provenance : "derived_from_nasa";
   $("#active-layer-badge").innerHTML = prov ? `<span class="badge ${prov === "official_nasa" ? "official" : prov === "derived_from_nasa" ? "derived" : prov === "synthetic" ? "synthetic" : "model"}">${prov.replaceAll("_", " ")}</span>` : "";
 }
 
@@ -288,11 +299,16 @@ export function updateSector() {
 }
 
 export async function reloadAssets() {
+  const session = ctx.cur;
   try {
-    const a = await api.assets(ctx.cur?.id);
+    const a = await api.assets(session?.id);
+    if (ctx.cur !== session) return;
     ctx.userAssets = [...a.general, ...a.session];
   } catch { ctx.userAssets = ctx.userAssets || []; }
-  ctx.entities = entitiesFrom(ctx.scenario, ctx.userAssets);
+  ctx.entities = [
+    ...entitiesFrom(ctx.scenario, ctx.userAssets),
+    ...(ctx.scenario.hazards || []).map((zone) => ({ ...zone, kind: "hazard", source: "scenario", provenance: "synthetic" })),
+  ];
   ctx.emit("entities", ctx.entities);
   refreshScene();
 }
@@ -374,7 +390,7 @@ async function boot() {
       setMode(ctx.cur.mode);
       return;
     }
-    setMode(b.dataset.mode === ctx.cur.mode && b.dataset.mode === "focus" ? "plan" : b.dataset.mode);
+    setMode(b.dataset.mode);
   }));
   $$(".console-dock .eye").forEach((eye) => eye.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); eye.click(); } }));
 
@@ -393,7 +409,7 @@ async function boot() {
   await applySession();
   updateSector();
   updateScaleBar();
-  if (!restored) ctx.emit("first-run");
+
   document.body.dataset.ready = "1";
 }
 

@@ -64,6 +64,7 @@ class CostParams:
     thermal_risk: np.ndarray | None = None
     science_interest: np.ndarray | None = None
     coupling: np.ndarray | None = None
+    restrictions: dict[str, np.ndarray] = field(default_factory=dict)
     walkback_origin: tuple[float, float] | None = None
     walkback_radius_m: float | None = None
 
@@ -177,6 +178,8 @@ def compute_costmap(terrain: TerrainContext, params: CostParams) -> CostmapResul
         walk = d > params.walkback_radius_m
         tiers = np.where(walk, TIER_FORBIDDEN, tiers).astype(np.int8)
 
+    for mask in params.restrictions.values():
+        tiers[mask] = TIER_FORBIDDEN
     cost = np.where(tiers == TIER_FORBIDDEN, np.inf, cost)
     comps = {"slope": slope_cost, "roughness": rough_n, "hazard": hz_soft, "context": context}
     if walk is not None:

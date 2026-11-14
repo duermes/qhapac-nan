@@ -58,7 +58,7 @@ export class VoiceCopilot {
     try {
       res = await api.voice(text, this.iface);
     } catch (e) {
-      res = { intent: "offline", speech: "Khipu no responde: usa los controles manuales." };
+      res = { intent: "offline", speech: "Khipu no responde. Usa los controles de la interfaz." };
     }
     this.speak(res.speech);
     try { this.onIntent?.(res); } catch (err) { console.error(err); }

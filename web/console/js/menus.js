@@ -24,7 +24,7 @@ export function initMenus(c) {
   const voice = new VoiceCopilot({ iface: "console", onIntent: handleIntent });
   ctx.voice = voice;
   const M = {
-    Files: [["Nueva travesía", () => addTraverse()], ["Importar ruta GeoJSON…", () => $("#import-file").click()],
+    Files: [["Nueva travesía", () => { setMode("plan"); addTraverse(); }], ["Importar ruta GeoJSON…", () => $("#import-file").click()],
       ["Guardar proyecto", () => { persist(); toast("Proyecto guardado", "safe"); }, "Ctrl+S"],
       ["Exportar GeoJSON", () => exportRoute("geojson")], ["Exportar SASF (secuencia)", () => exportRoute("sasf")], ["Exportar CSV (telemetría)", () => exportRoute("csv")],
       ["Volver al portal", () => { location.href = "/home"; }]],
@@ -122,6 +122,10 @@ function initSearch() {
 // ------------------------------------------------------------------ focus
 function initFocusMenu() {
   const el = $("#focus-menu");
+  const button = $("#focus-btn");
+  const open = (show) => { el.hidden = !show; button.setAttribute("aria-expanded", String(show)); };
+  button.addEventListener("click", () => open(el.hidden));
+  onClickOutside(el, () => open(false), [button]);
   const items = [{ name: ctx.region.manifest?.name || "Macrorregión", bbox: { lat_min: ctx.region.grid.lat_min, lat_max: ctx.region.grid.lat_max, lon_min: ctx.region.grid.lon_min, lon_max: ctx.region.grid.lon_max } },
     ...(ctx.region.focus || [])];
   el.innerHTML = `<div class="kicker" style="padding:4px 10px">Enfocar sector (navegación instantánea)</div>` + items.map((f, i) => `<button role="menuitem" data-f="${i}"><span>${esc(f.name)}</span><span class="mono dim">${f.center ? `${f.center.lat.toFixed(2)}°N ${f.center.lon.toFixed(2)}°E` : "completa"}</span></button>`).join("");
@@ -131,8 +135,9 @@ function initFocusMenu() {
     const f = items[+b.dataset.f];
     ctx.map2d.fitBBox(f.bbox);
     if (ctx.map3d && ctx.cur.view === "3d" && f.center) ctx.map3d.focusOn(f.center.lat, f.center.lon, 60000);
-    // relocation is instantaneous and leaves no permanent selection state
-    setMode("plan");
+    if (ctx.map3d && ctx.cur.view === "3d" && !f.center) ctx.map3d.resetCamera();
+    open(false);
+    button.focus();
   });
 }
 
@@ -150,12 +155,12 @@ function initShortcuts(toggleMenubar) {
     const k = e.key;
     const map = {
       v: () => setView(ctx.cur.view === "2d" ? "3d" : "2d"), g: () => setMode("general"), a: () => setMode("analyze"),
-      p: () => setMode("plan"), f: () => setMode("focus"), n: () => setAddMode(!ctx.cur.addMode), l: () => ctx.decks.legend.toggle(),
-      y: () => ctx.decks.layers.toggle(), m: () => $("#metrics").click(), r: resetCamera, k: () => ctx.voice.start(),
+      p: () => setMode("plan"), f: () => $("#focus-btn").click(), n: () => setAddMode(!ctx.cur.addMode), l: () => ctx.decks.legend.toggle(),
+      y: () => ctx.decks.layers.toggle(), m: () => { if (ctx.cur.mode === "plan") $("#metrics").click(); }, r: resetCamera, k: () => ctx.voice.start(),
       "/": () => $("#search").focus(), "?": shortcutsDialog, "+": () => m.zoomAt(1.25), "=": () => m.zoomAt(1.25), "-": () => m.zoomAt(0.8),
       ArrowLeft: () => { m.cam.cx -= 40 / m.cam.scale; m.clampCam(); m.draw(); }, ArrowRight: () => { m.cam.cx += 40 / m.cam.scale; m.clampCam(); m.draw(); },
       ArrowUp: () => { m.cam.cy -= 40 / m.cam.scale; m.clampCam(); m.draw(); }, ArrowDown: () => { m.cam.cy += 40 / m.cam.scale; m.clampCam(); m.draw(); },
-      Escape: () => { setAddMode(false); toggleMenubar(false); $("#focus-menu").hidden = true; },
+      Escape: () => { setAddMode(false); toggleMenubar(false); if (!$("#focus-menu").hidden) $("#focus-btn").click(); },
     };
     const fn = map[k] || map[k.toLowerCase()];
     if (fn) { e.preventDefault(); fn(); }

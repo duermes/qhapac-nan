@@ -1,7 +1,7 @@
 """REF-164..171."""
 import json
 
-from conftest import BASE, DELTA, ROOT, needs_mola, read, web_text
+from conftest import ROVER, BASE, DELTA, ROOT, needs_mola, read, web_text
 
 JS = web_text("console/js")
 
@@ -30,7 +30,7 @@ def test_planning_toolbar_collapse_and_reopen():
 
 @needs_mola
 def test_metrics_euclid_dist_and_resources(client):
-    j = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "asset_id": "ROVER_PR1"}).json()
+    j = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "asset_id": "ROVER_PR1"}).json()
     assert j["direct"]["distance_m"] > 2000
     assert j["variants"][0]["asset_metrics"]["resources"]["battery_wh"] > 0
     assert "Distancia euclídea" in JS

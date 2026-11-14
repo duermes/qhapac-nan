@@ -8,7 +8,7 @@ export class Terrain3D {
         this.camera = camera;
         this.presetKey = presetKey;
         this.preset = AssetRegistry.getHudPreset(presetKey);
-        this.gridSize = 600;
+        this.gridSize = 360;
         this.segments = 180;
         this.heightData = new Float32Array((this.segments + 1) * (this.segments + 1));
         this.colliders = [];
@@ -117,13 +117,15 @@ export class Terrain3D {
             const x = pos.getX(i);
             const z = pos.getZ(i);
             const distFromCenter = Math.hypot(x, z);
-            const craterRim = Math.exp(-Math.pow((distFromCenter - 220) / 55.0, 2)) * 34.0;
+            const craterRim = Math.exp(-Math.pow((distFromCenter - 134) / 36.0, 2)) * 25.0;
             const dunes = Math.sin(x * 0.02) * Math.cos(z * 0.02) * 8.0;
             const ripples = Math.sin(x * 0.05 + z * 0.035) * 2.2 + Math.cos(x * 0.08 - z * 0.06) * 1.0;
             const valley = Math.sin(x * 0.015) * 4.5;
             const regional = this.surfaceSampler(x, z);
-            const detail = 1 - THREE.MathUtils.smoothstep(Math.max(Math.abs(x), Math.abs(z)), 250, 300);
-            let y = regional + (craterRim + dunes + ripples + valley) * detail;
+            const detail = 1 - THREE.MathUtils.smoothstep(Math.max(Math.abs(x), Math.abs(z)), 135, this.gridSize / 2);
+            const escarpment = 23 * Math.exp(-(((x - 26) / 28) ** 2 + ((z + 115) / 12) ** 2));
+            const basin = -15 * Math.exp(-(((x + 48) / 35) ** 2 + ((z - 60) / 25) ** 2));
+            let y = regional + (craterRim + dunes + ripples + valley + escarpment + basin) * detail;
             const distBase = Math.hypot(x - this.baseCoord.x, z - this.baseCoord.z);
             if (distBase < 38.0) {
                 const flattenFactor = 1 - THREE.MathUtils.smoothstep(distBase, 24, 38);
@@ -229,7 +231,7 @@ export class Terrain3D {
             roughness: 0.95,
             metalness: 0.08
         });
-        const numRocks = 130;
+        const numRocks = 105;
         for (let i = 0; i < numRocks; i++) {
             const radius = 0.8 + this.random() * 3.5;
             const geom = new THREE.IcosahedronGeometry(radius, this.random() > 0.5 ? 1 : 0);
@@ -260,7 +262,13 @@ export class Terrain3D {
             rock.position.set(rx, ry + radius * scaleY * 0.35, rz);
             rock.rotation.set((this.random() - 0.5) * 0.8, this.random() * Math.PI * 2, (this.random() - 0.5) * 0.8);
             this.scene.add(rock);
-            const colRadius = Math.max(scaleX, scaleZ) * radius * 0.85;
+            let colRadius = 0;
+            rock.updateMatrix();
+            const vertex = new THREE.Vector3();
+            for (let i = 0; i < pos.count; i++) {
+                vertex.fromBufferAttribute(pos, i).applyMatrix4(rock.matrix);
+                colRadius = Math.max(colRadius, Math.hypot(vertex.x - rx, vertex.z - rz));
+            }
             this.colliders.push({
                 x: rx,
                 z: rz,
@@ -341,6 +349,9 @@ export class Terrain3D {
             radius: 12.0,
             name: "Estructura Domo Base Alfa"
         });
+        this.colliders.push({
+            x: this.baseCoord.x, z: this.baseCoord.z + 11.2, radius: 2.9, name: "Esclusa de Base Alfa"
+        });
         this.pois.push({
             x: this.baseCoord.x,
             z: this.baseCoord.z,
@@ -355,7 +366,7 @@ export class Terrain3D {
         this.initRoverModel(this.targetCoord.x - 16, this.targetCoord.z - 14, "Rover Abierto LRV-02", false);
         this.initRoverModel(85, 65, "Rover Scout RS-03", false);
         this.initRoverModel(-45, -105, "Rover Logístico RC-04", true);
-        this.initCompanionAstronaut(this.baseCoord.x + 5, this.baseCoord.z + 16, "Dra. Vance (Geóloga EVA)", "scanner");
+        this.initCompanionAstronaut(this.baseCoord.x + 7, this.baseCoord.z + 18, "Ing. Vega (Apoyo EVA)", "scanner");
         this.initCompanionAstronaut(this.targetCoord.x - 8, this.targetCoord.z - 6, "Tte. Chen (Exobiología)", "antenna");
         this.initCompanionAstronaut(-95, -35, "Ing. Morales (Telecomunicaciones)", "antenna");
         this.initCompanionAstronaut(-20, 75, "Dra. Sato (Astrobiología)", "scanner");
@@ -508,7 +519,7 @@ export class Terrain3D {
         const pDrill = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.8, 8), new THREE.MeshBasicMaterial({ color: 0x263238 }));
         pDrill.position.y = 1.0;
         pGroup.add(pDrill);
-        const pLight = new THREE.PointLight(0xff9100, 2.0, 15);
+        const pLight = new THREE.PointLight(0xff503b, 2.0, 15);
         pLight.position.y = 5.2;
         pGroup.add(pLight);
         pGroup.position.set(75, pY, -60);
@@ -525,7 +536,7 @@ export class Terrain3D {
             description: "Testigo geológico continuo a 5m: regolito basáltico superior y arcillas esmectitas profundas."
         });
         this.interactiveStations.push({
-            x: 75, z: -60, name: "Torre de Perforación Geológica",
+            x: 75, z: -60, name: "Torre de Perforación Geológica", fault: true, beacon: pLight,
             infoTitle: "Estratigrafía de Subsuelo Extraída",
             infoDesc: "Testigo a 5m de profundidad: estrato de arcillas esmectitas ricas en carbonatos hidratados"
         });
@@ -581,7 +592,7 @@ export class Terrain3D {
         mCtx.fillStyle = '#80deea';
         mCtx.font = '14px monospace';
         mCtx.fillText('SIMULACIÓN · HÁBITAT DE ENTRENAMIENTO EVA', 24, 210);
-        mCtx.fillText('Presiona [F] o el botón superior para regresar al exterior.', 24, 232);
+        mCtx.fillText('Pulsa [E] junto a la esclusa para regresar al exterior.', 24, 232);
         this.monitorTexture = new THREE.CanvasTexture(monitorCanvas);
         const monitorMat = new THREE.MeshBasicMaterial({ map: this.monitorTexture });
         const monitorMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.2), monitorMat);
@@ -748,6 +759,15 @@ export class Terrain3D {
             type: "crew",
             color: "#80deea",
             description: "Miembro de la tripulación científica realizando muestreo geológico en superficie."
+        });
+    }
+    pathBlocked(x0, z0, x1, z1, padding = 0.65, boundary = 2) {
+        const half = this.gridSize / 2 - boundary;
+        if (Math.abs(x1) > half || Math.abs(z1) > half) return true;
+        const dx = x1 - x0, dz = z1 - z0, lengthSquared = dx * dx + dz * dz;
+        return this.colliders.some(({ x, z, radius }) => {
+            const fraction = lengthSquared ? Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / lengthSquared)) : 0;
+            return Math.hypot(x0 + dx * fraction - x, z0 + dz * fraction - z) < radius + padding;
         });
     }
     getNearbyReliefExtrema(centerX, centerZ, radiusMeters = 180) {

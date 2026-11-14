@@ -65,6 +65,8 @@ def interpret(text: str, pois: list[dict] | None = None, interface: str = "conso
     if re.search(r"\b(ayuda|help|que puedes|comandos)\b", t):
         return {"intent": "help", "speech": HELP_TEXT, "modes": ["Navegación", "Reconocer", "Planificar"]}
     if re.search(r"\b(parada|detener|stop|emergencia|alto total)\b", t):
+        if interface == "rover":
+            return {"intent": "emergency_stop", "speech": "Emergencia. Contacta al operador del rover."}
         return {"intent": "emergency_stop", "speech": "Parada de emergencia activada.", "confirm": True}
     if re.search(r"\b(retorno|volver|regresar|return)\b", t):
         return {"intent": "safe_return", "speech": "Calculando retorno seguro a la base."}

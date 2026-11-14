@@ -87,3 +87,27 @@
   .rover-foot { min-width: 0; max-width: 60vw; }
   .tc .nav-dial { display: none; }
 }
+
+.map-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.map-actions .btn { min-height: 44px; }
+.camera-controls summary { cursor: pointer; padding: 6px 10px; color: var(--gold); }
+.dpad [data-dir="center"] { grid-column: 2; grid-row: 2; }
+.dpad [data-dir="out"] { grid-column: 1; grid-row: 3; }
+.dpad [data-dir="in"] { grid-column: 3; grid-row: 3; }
+@media (max-width: 700px) {
+  .camera-controls .dpad { grid-template-columns: repeat(3, 44px); gap: 3px; padding: 4px; }
+  .map-actions .btn { padding-inline: 8px; }
+  .tr { top: 64px; right: 8px; max-width: calc(100vw - 16px); }
+  #map-layer-label { max-width: 136px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+  .tc, .goal-meta { display: none; }
+  .col-left, .col-right { top: 160px; bottom: auto; width: calc(50vw - 13px); max-height: 39dvh; }
+  .col-left { left: 8px; }
+  .col-right { right: 8px; }
+  .bl { left: 8px; bottom: 84px; flex-direction: column; gap: 4px; align-items: flex-start; }
+  .br { right: 8px; bottom: 84px; gap: 5px; max-width: 49vw; }
+  .rover-foot { min-width: 0; max-width: 49vw; font-size: 10px; padding: 7px 8px; }
+  .rover-legend { right: 8px; bottom: 168px; width: 46vw; }
+}
+
+.rover-window > summary { cursor: pointer; display: list-item; list-style-position: inside; }
+.rover-window:not([open]) > summary { border-bottom: 0; }

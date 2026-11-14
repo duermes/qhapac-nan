@@ -25,14 +25,14 @@ class JsonStore:
         if not p.exists():
             return default
         try:
-            return json.loads(p.read_text())
+            return json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return default
 
     def write(self, name: str, value) -> None:
         with self._lock:
             tmp = self._path(name).with_suffix(".tmp")
-            tmp.write_text(json.dumps(value, indent=2, ensure_ascii=False))
+            tmp.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding="utf-8")
             tmp.replace(self._path(name))
 
 
@@ -57,7 +57,7 @@ class AssetRepository:
         self.store.write("assets", d)
         return asset
 
-    def update(self, asset_id: str, patch: dict, session_id: str | None = None) -> dict | None:
+    def update(self, asset_id: str, patch: dict, session_id: str | None = None, terrain=None) -> dict | None:
         d = self._all()
         pools = [d["general"]] + list(d["sessions"].values())
         for pool in pools:
@@ -65,7 +65,10 @@ class AssetRepository:
                 if a["id"] == asset_id:
                     if a.get("locked") and not patch.get("unlock"):
                         raise PermissionError("asset locked (saved route)")
-                    a.update({k: v for k, v in patch.items() if k != "unlock"})
+                    changes = {k: v for k, v in patch.items() if k != "unlock"}
+                    if ({"lat", "lon"} & changes.keys()) and terrain is not None:
+                        changes["elevation_m"] = terrain.elevation_at(changes.get("lat", a["lat"]), changes.get("lon", a["lon"]))
+                    a.update(changes)
                     self.store.write("assets", d)
                     return a
         return None

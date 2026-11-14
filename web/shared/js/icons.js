@@ -82,6 +82,8 @@ export const ASSET_REGISTRY = {
   sample: { icon: "sample", color: "#3fbf7f", label: "Muestra" },
   landmark: { icon: "station", color: "#b8b3a5", label: "Infraestructura" },
   hazard: { icon: "hazard", color: "#e0534a", label: "Peligro" },
+  lava_pit: { icon: "hazard", color: "#ff8c36", label: "Fosa de lava" },
+  laboratory: { icon: "flask", color: "#72cec7", label: "Laboratorio" },
 };
 
 export function brandBlock(sub) {

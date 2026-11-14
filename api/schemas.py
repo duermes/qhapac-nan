@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from khipu.domain import AssetKind
+
 Profile = Literal["rover", "astronaut"]
 
 
@@ -16,10 +18,37 @@ class LatLon(BaseModel):
     name: str | None = None
 
 
+class MobileSettings(BaseModel):
+    max_slope_deg: float | None = Field(default=None, gt=0, le=45)
+    speed_mps: float | None = Field(default=None, gt=0, le=5)
+    resources: dict[Literal["o2_kg", "water_kg", "battery_wh"], float] | None = None
+
+    @field_validator("resources")
+    @classmethod
+    def resource_levels(cls, resources):
+        import math
+        if resources and any(not math.isfinite(v) or v < 0 for v in resources.values()):
+            raise ValueError("Los recursos deben ser cantidades finitas y no negativas")
+        return resources
+
+
 class RouteParams(BaseModel):
+    ltst_h: float = Field(default=13, ge=0, le=24)
+    tau: float = Field(default=0.5, ge=0, le=10)
+    min_temperature_c: float = Field(default=-105, ge=-170, le=80)
+    max_temperature_c: float = Field(default=45, ge=-160, le=100)
+    max_dust_tau: float = Field(default=3, gt=0, le=10)
+    min_light_w_m2: float = Field(default=0.1, gt=0, le=1000)
+    min_link_db: float = Field(default=0, ge=-40, le=40)
+    max_blackout_s: float = Field(default=900, ge=0, le=7200)
+    max_distance_m: float | None = Field(default=None, gt=0)
+
     max_slope_deg: float | None = Field(default=None, gt=0, le=45)
     walkback_limit_m: float | None = Field(default=None, ge=1000, le=2000)
     reserve_fraction: float | None = Field(default=None, ge=0, le=0.8)
+    reserve_o2_fraction: float | None = Field(default=None, ge=0, le=0.8)
+    reserve_water_fraction: float | None = Field(default=None, ge=0, le=0.8)
+    reserve_battery_fraction: float | None = Field(default=None, ge=0, le=0.8)
     resources_available: float | None = Field(default=None, ge=-1e6)
     resources_capacity: float | None = Field(default=None, gt=0)
     speed_mps: float | None = Field(default=None, gt=0, le=5)
@@ -35,12 +64,13 @@ class RouteRequest(BaseModel):
     waypoints: list[LatLon] = []
     asset_id: str | None = None
     profile: Profile | None = None
-    variants: bool = True
+    variants: bool = False  # legacy request field; the response contains one operational route
     params: RouteParams = RouteParams()
 
 
 class ReplanRequest(BaseModel):
     region_key: str | None = None
+    session_id: str | None = None
     current: LatLon
     destination: LatLon
     route_points: list[dict[str, Any]] = []
@@ -61,12 +91,12 @@ class CostmapRequest(BaseModel):
     stride: int = Field(default=2, ge=1, le=16)
 
 
-class AssetIn(BaseModel):
+class AssetIn(MobileSettings):
     id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=120)
     kind: str
-    lat: float
-    lon: float
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-360, le=360)
     session_id: str = "S1"
     elevation_m: float | None = None
     metadata: dict[str, Any] = {}
@@ -75,16 +105,16 @@ class AssetIn(BaseModel):
     @field_validator("kind")
     @classmethod
     def kind_ok(cls, v: str) -> str:
-        allowed = {"rover", "astronaut", "base", "habitat", "antenna", "waypoint", "poi", "sample", "hazard", "landmark"}
+        allowed = {kind.value for kind in AssetKind}
         if v not in allowed:
             raise ValueError(f"kind must be one of {sorted(allowed)}")
         return v
 
 
-class AssetPatch(BaseModel):
+class AssetPatch(MobileSettings):
     name: str | None = None
-    lat: float | None = None
-    lon: float | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-360, le=360)
     metadata: dict[str, Any] | None = None
     locked: bool | None = None
     unlock: bool = False
@@ -175,6 +205,8 @@ class EvaSurfaceRoute(BaseModel):
     asset_id: str
     points: list[EvaSurfacePoint] = Field(min_length=2, max_length=2000)
     available_o2_kg: float = Field(ge=0, le=1.2)
+    available_water_kg: float | None = Field(default=None, ge=0, le=3.6)
+    available_battery_wh: float | None = Field(default=None, ge=0, le=1100)
 
 
 class EvaResupplyRequest(BaseModel):

@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from conftest import BASE, DELTA, needs_mola, read, web_text
+from conftest import ROVER, BASE, DELTA, needs_mola, read, web_text
 from khipu.costmap import TIER_FORBIDDEN, CostParams, compute_costmap
 from khipu.geodesy import bilinear
 from khipu.inspection import risk_factors
@@ -51,7 +51,7 @@ def test_route_display_two_buttons_50_percent():
 
 @needs_mola
 def test_3d_dense_points_z_coordinate_integrity(client, jezero):
-    j = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "variants": False}).json()
+    j = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "variants": False}).json()
     pts = j["variants"][0]["points"]
     assert len(pts) > 10
     for p in pts[:: max(1, len(pts) // 15)]:
@@ -74,7 +74,7 @@ def test_save_route_locks_waypoints_and_discard_on_drag(client):
 
 def test_metrics_deck_on_demand_lifecycle():
     d = read("console/js/decks.js")
-    assert "metrics.openFor = (t) => { renderMetrics(t); metrics.open(); }" in d
+    assert "metrics.openFor = (t)" in d and "renderMetrics(t); metrics.open();" in d
 
 
 def test_nearby_pois_corridor_deck():

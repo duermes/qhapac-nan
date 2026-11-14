@@ -33,6 +33,8 @@ class AssetKind(str, Enum):
     SAMPLE = "sample"
     HAZARD = "hazard"
     LANDMARK = "landmark"
+    LAVA_PIT = "lava_pit"
+    LABORATORY = "laboratory"
 
 
 MOBILE_KINDS = {AssetKind.ROVER, AssetKind.ASTRONAUT}
@@ -98,6 +100,11 @@ class MobileAsset(Asset):
     speed_mps: float = 0.1
     resources: dict[str, float] = field(default_factory=dict)
     heading_deg: float = 0.0
+    virtual: bool = False
+
+    def to_dict(self) -> dict:
+        return {**super().to_dict(), "virtual": self.virtual, "resources": self.resources,
+                "max_slope_deg": self.max_slope_deg, "speed_mps": self.speed_mps, "heading_deg": self.heading_deg}
 
     @property
     def is_mobile(self) -> bool:
@@ -130,6 +137,7 @@ def make_asset(data: dict) -> Asset:
             speed_mps=float(data.get("speed_mps", default_speed)),
             resources=dict(data.get("resources") or {}),
             heading_deg=float(data.get("heading_deg", 0.0)),
+            virtual=bool(data.get("virtual", False)),
         )
     return StaticAsset(**common)
 

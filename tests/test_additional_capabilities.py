@@ -40,7 +40,7 @@ def test_workspace_persistence_roundtrip(client):
 
 @needs_mola
 def test_replan_uses_cumulative_ledger_not_refill(client):
-    before = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "asset_id": "ROVER_LRV2", "variants": False}).json()
+    before = client.post("/api/route", json={"origin": {"lat": 18.456, "lon": 77.431, "id": "ROVER_LRV2"}, "destination": DELTA}).json()
     a0 = before["variants"][0]["pnr"]["available"]
     client.post("/api/ledger/ROVER_LRV2/consume", json={"amount": 5000, "profile": "rover"})
     after = client.post("/api/route", json={"origin": {"lat": 18.45, "lon": 77.44}, "destination": DELTA, "asset_id": "ROVER_LRV2", "variants": False}).json()

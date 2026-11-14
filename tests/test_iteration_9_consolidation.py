@@ -1,5 +1,5 @@
 """REF-172..184."""
-from conftest import BASE, DELTA, needs_mola, read, web_text
+from conftest import ROVER, EVA, BASE, DELTA, needs_mola, read, web_text
 
 M3 = read("shared/js/map3d.js")
 CSS = read("shared/css/qn.css") + read("console/css/console.css")
@@ -30,7 +30,7 @@ def test_layers_deck_height_and_scroll_bounding():
 
 
 def test_reopen_planning_button_lifecycle():
-    assert '$("#planning-reopen").hidden = !on' in JS
+    assert '$("#planning-reopen").hidden = !planning || !on' in JS
 
 
 def test_planning_arrows_orientation_semantics():
@@ -41,8 +41,8 @@ def test_planning_arrows_orientation_semantics():
 @needs_mola
 def test_decoupled_waypoint_creation_and_routing(client):
     client.post("/api/assets", json={"id": "WP_DEC", "name": "WP", "kind": "waypoint", "lat": 18.452, "lon": 77.43, "session_id": "SX"})
-    j = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "waypoints": [{"lat": 18.452, "lon": 77.43, "id": "WP_DEC"}], "profile": "rover"}).json()
-    pts = j["variants"][1]["points"]
+    j = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "waypoints": [{"lat": 18.452, "lon": 77.43, "id": "WP_DEC"}], "profile": "rover"}).json()
+    pts = j["variants"][0]["points"]
     from khipu.geodesy import haversine_m
     assert min(haversine_m(p["lat"], p["lon"], 18.452, 77.43) for p in pts) < 50
     client.delete("/api/assets/WP_DEC")
@@ -59,16 +59,18 @@ def test_3d_route_elevation_offset_and_contour_shader_color():
 
 @needs_mola
 def test_route_variants_multicriteria_differentiation(client):
-    j = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 17.89, "lon": 77.16}, "profile": "rover"}).json()
-    v = {x["variant"]: x["metrics"] for x in j["variants"]}
-    assert v["fast"]["distance_m"] < v["safe"]["distance_m"]
-    assert v["safe"]["risk_mean"] < v["fast"]["risk_mean"]
+    destination = {"lat": 18.46, "lon": 77.45}
+    route = client.post("/api/route", json={"origin": ROVER, "destination": destination}).json()
+    assert len(route["variants"]) == 1
+    points = route["variants"][0]["points"]
+    assert abs(points[0]["lat"] - ROVER["lat"]) < 1e-9
+    assert abs(points[-1]["lon"] - destination["lon"]) < 1e-9
 
 
 @needs_mola
 def test_dynamic_metrics_per_entity_type(client):
-    rv = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 18.452, "lon": 77.462}, "asset_id": "ROVER_PR1"}).json()
-    ev = client.post("/api/route", json={"origin": BASE, "destination": {"lat": 18.452, "lon": 77.462}, "asset_id": "EVA_01"}).json()
+    rv = client.post("/api/route", json={"origin": ROVER, "destination": {"lat": 18.452, "lon": 77.462}, "asset_id": "ROVER_PR1"}).json()
+    ev = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.452, "lon": 77.462}, "asset_id": "EVA_01"}).json()
     assert rv["variants"][0]["pnr"]["resource"] == "battery_wh"
     assert ev["variants"][0]["pnr"]["resource"] == "o2_kg" and "o2_kg" in ev["variants"][0]["metrics"]["resources"]
 

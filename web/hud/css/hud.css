@@ -1,6 +1,6 @@
 body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud-bg: rgba(16,22,18,.76); --hud-accent: var(--gold); }
 .scene { position: fixed; inset: 0; }
-.scene canvas { display: block; }
+.scene canvas { display: block; touch-action: none; }
 .visor-mask { position: fixed; inset: 0; pointer-events: none; z-index: 5;
   box-shadow: inset 0 0 120px 40px rgba(0,0,0,.55); border: 14px solid rgba(0,0,0,.25); border-radius: 26px; }
 .small { font-size: 10px; }
@@ -153,3 +153,6 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
   .north, .suit { right: 8px; } .goal, .stamina, .relief { left: 8px; }
   .relief, .north { transform-origin: bottom left; } .north { transform-origin: bottom right; }
 }
+
+.hud[data-camera="third"] > :not(#scene):not(script) { display: none !important; }
+#goal-pnr { color: #ff9b53; }

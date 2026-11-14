@@ -32,7 +32,7 @@ export function localRoute(scene, start, target) {
   const size = Math.floor(half * 2 / cell) + 1;
   const decode = id => ({ x: id % size * cell - half, z: Math.floor(id / size) * cell - half });
   const encode = (x, z) => Math.round((z + half) / cell) * size + Math.round((x + half) / cell);
-  const free = (x, z) => Math.abs(x) <= half && Math.abs(z) <= half && !world.colliders.some(c => Math.hypot(x - c.x, z - c.z) < c.radius + 0.9);
+  const free = (x, z) => Math.abs(x) <= half && Math.abs(z) <= half && !world.pathBlocked(x, z, x, z, 0.9);
   const desired = target.kind === "base" ? { x: world.baseCoord.x, z: world.baseCoord.z + 16 } : scene.toLocal(target.lat, target.lon);
   let goal = null, best = Infinity;
   for (let x = desired.x - 10; x <= desired.x + 10; x += cell) {
@@ -42,7 +42,20 @@ export function localRoute(scene, start, target) {
     }
   }
   if (!goal || target.kind === "sample" && best > 4.5) throw new Error("No hay acceso transitable al objetivo");
-  const startId = encode(start.x, start.z), goalId = encode(goal.x, goal.z);
+  let startCell = null, startDistance = Infinity;
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      const cellId = encode(start.x + dx * cell, start.z + dz * cell);
+      const candidate = decode(cellId);
+      const distance = Math.hypot(candidate.x - start.x, candidate.z - start.z);
+      if (distance < startDistance && free(candidate.x, candidate.z) &&
+          !world.pathBlocked(start.x, start.z, candidate.x, candidate.z)) {
+        startCell = cellId; startDistance = distance;
+      }
+    }
+  }
+  if (startCell === null) throw new Error("El origen está bloqueado por el terreno local");
+  const startId = startCell, goalId = encode(goal.x, goal.z);
   const scores = new Float64Array(size * size); scores.fill(Infinity);
   const parents = new Int32Array(size * size); parents.fill(-1);
   const heights = new Float64Array(size * size); heights.fill(NaN);
@@ -60,12 +73,12 @@ export function localRoute(scene, start, target) {
     const p = decode(current.id);
     for (const [dx, dz] of dirs) {
       const x = p.x + dx * cell, z = p.z + dz * cell;
-      if (!free(x, z) || !free((p.x + x) / 2, (p.z + z) / 2)) continue;
+      if (!free(x, z) || world.pathBlocked(p.x, p.z, x, z, 0.9)) continue;
       if (dx && dz && (!free(x, p.z) || !free(p.x, z))) continue;
       const id = encode(x, z), distance = Math.hypot(dx, dz) * cell;
       const grade = (height(id) - height(current.id)) / distance;
       const slope = Math.atan(grade) * 180 / Math.PI;
-      if (slope > 24 || slope < -28) continue;
+      if (Math.abs(slope) > 24) continue;
       const g = current.g + distance * (1 + Math.max(0, grade) * 9 + Math.abs(grade) * 2);
       if (g >= scores[id]) continue;
       scores[id] = g; parents[id] = current.id;
@@ -76,6 +89,6 @@ export function localRoute(scene, start, target) {
   const nodes = [];
   for (let id = goalId; id !== -1; id = parents[id]) nodes.push(decode(id));
   nodes.reverse();
-  nodes[0] = { x: start.x, z: start.z };
+  if (startDistance > 0.001) nodes.unshift({ x: start.x, z: start.z });
   return nodes.map(p => ({ ...scene.toLatLon(p.x, p.z), elevation_m: scene.surfaceElevation(p.x, p.z) }));
 }

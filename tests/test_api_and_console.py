@@ -1,5 +1,5 @@
 """REF-001..007 — API basics and console static files."""
-from conftest import BASE, DELTA, WEB, needs_mola
+from conftest import ROVER, BASE, DELTA, WEB, needs_mola
 
 
 def test_api_health_endpoint(client):
@@ -27,8 +27,8 @@ def test_api_costmap_calculation(client):
 
 @needs_mola
 def test_api_route_planning_three_variants(client):
-    j = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "asset_id": "ROVER_PR1"}).json()
-    assert [v["variant"] for v in j["variants"]] == ["safe", "balanced", "fast"]
+    j = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "asset_id": "ROVER_PR1"}).json()
+    assert [v["variant"] for v in j["variants"]] == ["balanced"]
     for v in j["variants"]:
         assert v["points"] and v["metrics"]["distance_m"] > 0 and v["pnr"]
 

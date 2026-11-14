@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/static/hud/css/hud.css" />
   <script type="importmap">{ "imports": { "three": "/static/vendor/three/three.module.js", "three/addons/": "/static/vendor/three/addons/" } }</script>
 </head>
-<body class="hud">
+<body class="hud" data-camera="first">
   <div id="scene" class="scene" aria-label="Escena 3D EVA"></div>
   <div class="visor-mask" aria-hidden="true"></div>
 
@@ -25,7 +25,7 @@
     <div class="v" id="v-smp"><span>MUESTRAS:</span><b class="mono" id="samples">0/16</b></div>
   </div>
   <div class="tr-btns">
-    <button id="camera-btn" class="hbtn"><span data-icon="camera"></span>Cámara</button>
+    <button id="camera-btn" class="hbtn" title="Vista externa. Pulsa C o toca la escena para volver"><span data-icon="camera"></span>Cámara</button>
     <button id="help-btn" class="hbtn" aria-expanded="false"><span data-icon="help"></span>Ayuda</button>
   </div>
 
@@ -39,6 +39,7 @@
     <div class="goal-name" id="goal-name">Sin objetivo</div>
     <div class="mono small">Rumbo: <b id="goal-brg">—</b> &nbsp; ETA: <b id="goal-eta">—</b></div>
     <div class="mono small">ΔZ: <b id="goal-dz">—</b> <span id="goal-safe" class="ok"></span></div>
+    <div id="goal-pnr" class="small mono" hidden></div>
     <div class="goal-actions"><button class="hbtn sm" id="goal-prev" aria-label="Objetivo anterior">◂</button><button class="hbtn sm" id="goal-next" aria-label="Siguiente objetivo">▸</button><button class="hbtn sm" id="goal-route">Ruta Khipu</button></div>
   </section>
   <section class="hcard stamina" aria-label="Esfuerzo y estamina">
@@ -52,7 +53,7 @@
     <div class="hcard-title"><span data-icon="eye"></span>ELEMENTOS EN CAMPO VISUAL <span id="fov-filter" class="small dim"></span></div>
     <div id="fov-list" class="fov-list"></div>
   </section>
-  <section class="hcard suit" aria-label="Estado del traje">
+  <section class="hcard suit" aria-label="Estado del traje" hidden>
     <div class="hcard-title"><span data-icon="shield"></span>Estado del traje <span id="alert-count" class="badge cached">0</span></div>
     <div id="suit-alerts" class="suit-alerts"><div class="empty">Sin avisos activos</div></div>
     <div class="suit-foot mono" id="traction">TRACCIÓN NOMINAL</div>
@@ -87,7 +88,7 @@
     <button class="hbtn pad" data-move="left" aria-label="Girar izquierda">◀</button>
     <button class="hbtn pad" data-move="back" aria-label="Retroceder">▼</button>
     <button class="hbtn pad" data-move="right" aria-label="Girar derecha">▶</button>
-    <button class="hbtn pad act" id="act-btn" aria-label="Interactuar (F/E)">F</button>
+    <button class="hbtn pad act" id="act-btn" aria-label="Interactuar (E)">E</button>
     <button class="hbtn pad sos" id="sos-btn" aria-label="Emergencia EVA">SOS</button>
   </div>
 

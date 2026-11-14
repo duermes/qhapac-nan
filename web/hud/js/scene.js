@@ -63,7 +63,7 @@ export class EvaScene {
   }
 
   groundY(x, z) {
-    return Math.abs(x) <= 300 && Math.abs(z) <= 300 ? this.world.getSmoothHeightAt(x, z) : this.molaY(x, z);
+    return Math.max(Math.abs(x), Math.abs(z)) <= this.world.gridSize / 2 ? this.world.getSmoothHeightAt(x, z) : this.molaY(x, z);
   }
 
   surfaceElevation(x, z) { return this.z0 + this.groundY(x, z); }
@@ -85,14 +85,14 @@ export class EvaScene {
   }
 
   buildRegionalTerrain() {
-    const geo = new THREE.PlaneGeometry(4800, 4800, 160, 160);
+    const geo = new THREE.PlaneGeometry(4800, 4800, 240, 240);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) pos.setY(i, this.molaY(pos.getX(i), pos.getZ(i)) - 0.2);
     const indices = [];
     for (let i = 0; i < geo.index.count; i += 3) {
       const triangle = [geo.index.getX(i), geo.index.getX(i + 1), geo.index.getX(i + 2)];
-      if (!triangle.every(v => Math.abs(pos.getX(v)) <= 300 && Math.abs(pos.getZ(v)) <= 300)) indices.push(...triangle);
+      if (!triangle.every(v => Math.max(Math.abs(pos.getX(v)), Math.abs(pos.getZ(v))) <= this.world.gridSize / 2)) indices.push(...triangle);
     }
     geo.setIndex(indices);
     geo.computeVertexNormals();
@@ -101,7 +101,7 @@ export class EvaScene {
   }
 
   localEntities() {
-    const kinds = { base: "base", rover: "rover", astronaut: "astronaut", science: "poi", antenna: "antenna" };
+    const kinds = { base: "base", rover: "rover", astronaut: "astronaut", crew: "astronaut", science: "poi", antenna: "antenna" };
     const entries = this.world.pois.map((p, i) => ({
       id: i === 0 ? "BASE_ALFA" : `EVA_POI_${i}`,
       name: p.name, description: p.description, kind: i === 0 ? "base" : p.tag === "COMMS" ? "antenna" : kinds[p.type] === "base" ? "landmark" : kinds[p.type] || "landmark",
@@ -150,7 +150,7 @@ export class EvaScene {
       beacon.position.set(l.x, this.groundY(l.x, l.z) + 2, l.z);
       this.routeGroup.add(beacon);
     }
-    this.routeGroup.visible = !this.character.isInsideBase;
+    this.routeGroup.visible = this.character.isFirstPerson && !this.character.isInsideBase;
   }
 
   move(dt, keys, stopped = false, stamina = 100, controlDt = dt) {
@@ -161,7 +161,7 @@ export class EvaScene {
     if (keys.has("left") || keys.has("right")) this.lookTarget = null;
     c.update(dt, controlDt);
     const distance = Math.hypot(c.position.x - before.x, c.position.z - before.z);
-    this.routeGroup.visible = !c.isInsideBase;
+    this.routeGroup.visible = c.isFirstPerson && !c.isInsideBase;
     this.regionalTerrain.visible = !c.isInsideBase;
     this.sky.visible = !c.isInsideBase;
     return { x: c.position.x, z: c.position.z, distance, speed: distance / Math.max(dt, 0.001), gradient: distance > 0.001 && !c.isInsideBase ? (c.position.y - before.y) / distance : 0 };
@@ -210,7 +210,7 @@ export class EvaScene {
     for (const m of this.markers) {
       const v = m.pos.clone().project(this.camera);
       const dist = m.pos.distanceTo(this.character.position);
-      const visible = !inside && !m.hidden && !m.collected && v.z > -1 && v.z < 1 && Math.abs(v.x) < 0.94 && Math.abs(v.y) < 0.9 && dist < 1800;
+      const visible = this.character.isFirstPerson && !inside && !m.hidden && !m.collected && v.z > -1 && v.z < 1 && Math.abs(v.x) < 0.94 && Math.abs(v.y) < 0.9 && dist < 1800;
       m.el.hidden = !visible;
       if (visible) { m.el.style.left = `${(v.x + 1) / 2 * w}px`; m.el.style.top = `${(1 - v.y) / 2 * h}px`; }
     }
@@ -223,8 +223,8 @@ export class EvaScene {
       this.cameraTargetPosition.set(p.x, p.y + 2.15, p.z);
       this.cameraLookPoint.set(p.x + Math.sin(heading) * 20, p.y + 2.15 + Math.sin(c.helmetPitch) * 20, p.z + Math.cos(heading) * 20);
     } else {
-      this.cameraTargetPosition.set(p.x - Math.sin(c.bodyHeading) * 6.8, p.y + 3.4, p.z - Math.cos(c.bodyHeading) * 6.8);
-      this.cameraLookPoint.set(p.x, p.y + 1.8, p.z);
+      this.positionExternalCamera(c);
+      this.cameraLookPoint.set(p.x, p.y + 1.65, p.z);
     }
     const snap = this.cameraSnap || this.camera.position.distanceTo(this.cameraTargetPosition) > 40;
     const alpha = snap ? 1 : 1 - Math.exp(-10 * dt);
@@ -233,6 +233,30 @@ export class EvaScene {
     this.cameraTargetRotation.setFromRotationMatrix(this.cameraMatrix);
     this.camera.quaternion.slerp(this.cameraTargetRotation, snap ? 1 : 1 - Math.exp(-12 * dt));
     this.cameraSnap = false;
+  }
+
+  positionExternalCamera(character) {
+    const { position: p, bodyHeading, isInsideBase } = character;
+    const camera = this.cameraTargetPosition;
+    // Find a clear angle when the nominal follow camera falls behind solid geometry.
+    const offsets = [0, 0.52, -0.52, 1.05, -1.05, 1.57, -1.57, Math.PI];
+    for (const distance of [6.8, 4.5, 2.8]) {
+      for (const offset of offsets) {
+        const angle = bodyHeading + offset;
+        const x = p.x - Math.sin(angle) * distance;
+        const z = p.z - Math.cos(angle) * distance;
+        if (isInsideBase) {
+          const { x: bx, z: bz } = this.world.baseCoord;
+          if (Math.hypot(x - bx, z - bz) > 9.2) continue;
+          camera.set(x, p.y + 2.9, z);
+        } else {
+          if (this.world.pathBlocked(p.x, p.z, x, z, 0.45)) continue;
+          camera.set(x, Math.max(p.y + 3.35, this.groundY(x, z) + 1.4), z);
+        }
+        return;
+      }
+    }
+    camera.set(p.x, p.y + (isInsideBase ? 3.5 : 5.5), p.z + 0.1);
   }
 
   resize() {

@@ -15,6 +15,8 @@ import pytest  # noqa: E402
 
 WEB = ROOT / "web"
 BASE = {"lat": 18.4447, "lon": 77.4508, "id": "BASE_ALFA"}
+ROVER = {"lat": 18.438, "lon": 77.47, "id": "ROVER_PR1"}
+EVA = {"lat": 18.447, "lon": 77.456, "id": "EVA_01"}
 DELTA = {"lat": 18.46, "lon": 77.40, "id": "POI_DELTA_FRONT"}
 HAS_MOLA = (ROOT / "data/processed/generated/regions/syrtis_jezero_nili/elevation.npy").exists()
 needs_mola = pytest.mark.skipif(not HAS_MOLA, reason="MOLA derived region missing: run scripts/bootstrap_data.py")

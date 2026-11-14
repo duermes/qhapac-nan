@@ -1,7 +1,7 @@
 """REF-052..062."""
 import numpy as np
 
-from conftest import BASE, DELTA, needs_mola, read
+from conftest import ROVER, BASE, DELTA, needs_mola, read
 from khipu.costmap import CostParams, compute_costmap
 from khipu.router import RouterConfig, plan
 from khipu.terrain import synthetic_terrain
@@ -39,7 +39,7 @@ def test_api_route_endpoint_slope_enforcement(client):
     t = __import__("api.app", fromlist=["engine"]).engine.terrain("jezero")
     r, c = np.unravel_index(np.nanargmax(t.slope), t.slope.shape)
     lat, lon = t.geometry.rc_to_latlon(r, c)
-    res = client.post("/api/route", json={"origin": BASE, "destination": {"lat": lat, "lon": lon}, "params": {"max_slope_deg": 10}})
+    res = client.post("/api/route", json={"origin": ROVER, "destination": {"lat": lat, "lon": lon}, "params": {"max_slope_deg": 10}})
     assert res.status_code == 422 and res.json()["reason"] in ("destino_slope", "destino_hazard")
 
 

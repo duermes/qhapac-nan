@@ -22,8 +22,8 @@ def test_surface_route_evaluates_local_elevations_and_resource_budget(client):
     assert route["metrics"]["ascent_m"] > 3.9
     assert route["metrics"]["resources"]["o2_kg"] > 0
     assert route["pnr"]["status"] == "round_trip_safe"
-    low = client.post("/api/eva/surface-route", json=surface_route(available_o2_kg=0.01)).json()
-    assert low["pnr"]["status"] == "infeasible"
+    low = client.post("/api/eva/surface-route", json=surface_route(available_o2_kg=0.01))
+    assert low.status_code == 422 and low.json()["reason"] == "resources"
 
 
 def test_surface_route_uses_lower_ledger_budget(client, engine):
@@ -31,9 +31,8 @@ def test_surface_route_uses_lower_ledger_budget(client, engine):
     consumed, history = ledger.consumed, list(ledger.history)
     try:
         ledger.consume(1.19)
-        route = client.post("/api/eva/surface-route", json=surface_route()).json()
-        assert route["pnr"]["available"] < 0.02
-        assert route["pnr"]["status"] == "infeasible"
+        route = client.post("/api/eva/surface-route", json=surface_route())
+        assert route.status_code == 422 and route.json()["reason"] == "resources"
     finally:
         ledger.consumed, ledger.history = consumed, history
 

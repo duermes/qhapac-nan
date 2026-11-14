@@ -23,6 +23,47 @@ from .physics import terramechanics as tm
 from .terrain import TerrainContext
 
 
+LAYER_INPUTS = {
+    "elevation": ("Topografía MOLA",),
+    "slope": ("Topografía MOLA", "Geometría planetocéntrica"),
+    "roughness": ("Topografía MOLA", "Ventana de relieve"),
+    "hazard": ("Topografía MOLA", "Pendiente", "Zonas de exclusión"),
+    "costmap": ("Topografía MOLA", "Pendiente y relieve", "Zonas de exclusión"),
+    "temperature": ("Topografía MOLA", "Insolación", "Atmósfera de polvo"),
+    "thermal_gradient": ("Topografía MOLA", "Temperatura superficial", "Escala espacial"),
+    "insolation": ("Topografía MOLA", "Efemérides solares", "Atenuación atmosférica"),
+    "shadow": ("Topografía MOLA", "Efemérides solares"),
+    "dust": ("Topografía MOLA", "Columna atmosférica", "Profundidad óptica"),
+    "radiation": ("Topografía MOLA", "Columna atmosférica", "Referencia MSL/RAD"),
+    "telecom": ("Topografía MOLA", "Antena UHF", "Difracción ITU-R"),
+    "traversability": ("Topografía MOLA", "Tracción y relieve", "Polvo"),
+    "slip": ("Topografía MOLA", "Tracción y suelo"),
+    "igt": ("Topografía MOLA", "Tracción, pendiente y rugosidad"),
+    "ibio": ("Topografía MOLA", "Cuencas", "Objetivos científicos"),
+    "science_vs_risk": ("Topografía MOLA", "Objetivos científicos", "Zonas de exclusión"),
+    "survival_astronaut": ("Topografía MOLA", "Base y alcance EVA", "Enlace, polvo y temperatura"),
+    "survival_rover": ("Topografía MOLA", "Base y alcance del rover", "Enlace, polvo y temperatura"),
+    "isru": ("Mapas CRISM/SHARAD", "Coeficientes ISRU"),
+}
+
+LAYER_CONTROLS = {
+    "hazard": ("profile", "max_slope_deg"),
+    "costmap": ("profile", "max_slope_deg", "hazard_weight"),
+    "temperature": ("ltst_h", "tau"),
+    "thermal_gradient": ("ltst_h", "tau"),
+    "insolation": ("ltst_h", "tau", "helio_au"),
+    "shadow": ("ltst_h",),
+    "dust": ("tau",),
+    "radiation": ("tau",),
+    "telecom": ("receiver_height_m", "link_margin_offset_db"),
+    "traversability": ("max_slope_deg", "tau"),
+    "igt": ("max_slope_deg",),
+    "ibio": ("science_radius_scale",),
+    "science_vs_risk": ("alpha", "science_radius_scale", "max_slope_deg"),
+    "survival_astronaut": ("ltst_h", "tau", "walkback_m", "max_slope_deg"),
+    "survival_rover": ("ltst_h", "tau", "walkback_m", "max_slope_deg"),
+}
+
 @dataclass
 class LayerDef:
     id: str
@@ -43,6 +84,7 @@ class LayerDef:
     def describe(self) -> dict:
         return {"id": self.id, "name": self.name, "units": self.units, "provenance": self.provenance.value,
                 "category": self.category, "description": self.description, "temporal": self.temporal,
+                "inputs": LAYER_INPUTS.get(self.id, ()), "controls": LAYER_CONTROLS.get(self.id, ()),
                 "colormap": self.colormap, "requires": self.requires, "available": self.available,
                 "unavailable_reason": self.unavailable_reason, "default_params": self.default_params,
                 "range_hint": list(self.range_hint) if self.range_hint else None}
@@ -214,7 +256,7 @@ def L_ibio(ctx, p):
     out = np.zeros(terrain.shape)
     for poi in ctx.science_pois():
         d = distance_grid_m(terrain, poi["lat"], poi["lon"])
-        sigma = float(poi.get("influence_m", 2500.0))
+        sigma = float(poi.get("influence_m", 2500.0)) * p.get("science_radius_scale", 1.0)
         out = np.maximum(out, float(poi["science_value"]) * np.exp(-(d / sigma) ** 2))
     z = terrain.filled()
     k = 6
@@ -268,7 +310,8 @@ def L_survival(ctx, p):
 
 
 def L_costmap(ctx, p):
-    cp = CostParams(profile=p.get("profile", "rover"), max_slope_deg=p.get("max_slope_deg"), hazard_zones=ctx.hazards())
+    cp = CostParams(profile=p.get("profile", "rover"), max_slope_deg=p.get("max_slope_deg"),
+                    w_hazard=p.get("hazard_weight", 1.0), hazard_zones=ctx.hazards())
     cm = compute_costmap(ctx.terrain, cp)
     return np.where(np.isfinite(cm.cost), cm.cost, np.nan)
 
@@ -307,7 +350,7 @@ def build_catalog(scenario: dict | None = None) -> dict[str, LayerDef]:
                  "Celdas ocultas al Sol según la posición solar Mars24.", temporal=True, colormap="shadow",
                  compute=L_shadow, range_hint=(0, 1)),
         LayerDef("dust", "Opacidad de polvo", "τ", P.MODEL, "ambiente",
-                 "Profundidad óptica escalada por columna atmosférica.", temporal=True, colormap="dust",
+                 "Profundidad óptica escalada por columna atmosférica.", colormap="dust",
                  compute=L_dust),
         LayerDef("radiation", "Dosis de radiación", "mGy/día", P.MODEL, "ambiente",
                  "Dosis absorbida referida a MSL/RAD y columna atmosférica.", colormap="magma", compute=L_radiation),
@@ -315,7 +358,7 @@ def build_catalog(scenario: dict | None = None) -> dict[str, LayerDef]:
                  "Margen UHF desde la antena del escenario con horizonte y difracción ITU-R P.526.",
                  colormap="telecom", compute=L_telecom, requires=["antena del escenario"], range_hint=(-20, 40)),
         LayerDef("traversability", "Transitabilidad dinámica", "0-1", P.MODEL, "movilidad",
-                 "Pendiente, deslizamiento Bekker/Janosi, rugosidad y visibilidad por polvo.", temporal=True,
+                 "Pendiente, deslizamiento Bekker/Janosi, rugosidad y visibilidad por polvo.",
                  colormap="traversability", compute=L_traversability, range_hint=(0, 1)),
         LayerDef("slip", "Deslizamiento del rover", "0-1", P.MODEL, "movilidad",
                  "Deslizamiento de equilibrio (tracción = resistencia) según pendiente.", colormap="magma",
@@ -371,7 +414,7 @@ class SnapshotManager:
         if not d.available or d.compute is None:
             raise LookupError(d.unavailable_reason or "layer unavailable")
         p = self.params_for(layer_id, params)
-        key_p = {k: v for k, v in p.items() if k not in ("ls_deg", "helio_au", "declination_deg", "sol")}
+        key_p = {k: v for k, v in p.items() if k not in ("ls_deg", "sol")}
         key = layer_id + ":" + hashlib.sha1(json.dumps(key_p, sort_keys=True, default=str).encode()).hexdigest()
         if key in self.cache:
             return self.cache[key]

@@ -6,7 +6,8 @@ from conftest import BASE, needs_mola, read
 
 def test_quick_nav_instant_relocation_no_permanent_state():
     m = read("console/js/menus.js")
-    assert "relocation is instantaneous and leaves no permanent selection state" in m and 'setMode("plan")' in m
+    focus = m.split("function initFocusMenu()", 1)[1].split("function initShortcuts", 1)[0]
+    assert "ctx.map2d.fitBBox" in focus and "open(false)" in focus and "setMode(" not in focus
 
 
 def test_dynamic_location_hud_over_map():

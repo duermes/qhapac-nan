@@ -2,7 +2,7 @@
 import math
 from datetime import datetime, timezone
 
-from conftest import BASE, DELTA, needs_mola, read, web_text
+from conftest import ROVER, BASE, DELTA, needs_mola, read, web_text
 from khipu.physics import ephemeris as eph
 
 HTML = read("console/index.html")
@@ -16,8 +16,8 @@ def test_planning_origin_and_destination_selectors():
 
 @needs_mola
 def test_planning_execution_and_metrics_deck(client):
-    j = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "asset_id": "ROVER_PR1"}).json()
-    m = j["variants"][1]["metrics"]
+    j = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "asset_id": "ROVER_PR1"}).json()
+    m = j["variants"][0]["metrics"]
     for k in ("distance_m", "duration_s", "ascent_m", "descent_m", "risk_mean", "resources"):
         assert k in m
     assert "function renderMetrics" in JS
@@ -30,7 +30,7 @@ def test_button_visual_states_no_permanent_bright_glow():
 
 @needs_mola
 def test_export_structure_includes_vertices_and_geojson(client):
-    r = client.post("/api/route", json={"origin": BASE, "destination": DELTA, "variants": False}).json()
+    r = client.post("/api/route", json={"origin": ROVER, "destination": DELTA, "variants": False}).json()
     route = {"points": r["variants"][0]["points"]}
     gj = client.post("/api/export/geojson", json={"route": route, "name": "t"}).json()["content"]
     coords = gj["features"][0]["geometry"]["coordinates"]

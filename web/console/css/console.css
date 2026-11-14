@@ -162,3 +162,25 @@
   .coords b { font-size: 11px; }
   .scalebar { left: 8px; right: auto; bottom: 80px; min-width: 0; }
 }
+
+#traverse-tools { min-width: 0; border: 0; padding: 0; margin: 0; }
+.numeric-pair { display: grid; grid-template-columns: minmax(0, 1fr) 5.4rem; gap: 8px; align-items: center; }
+.numeric-pair input { width: 100%; min-width: 0; }
+.return-safe { color: #65d8ff; }
+.return-limited { color: #ff8c36; }
+.return-safe i, .return-limited i { display: inline-block; width: 12px; border-top: 2px solid currentColor; vertical-align: middle; }
+
+.focus-menu { right: 12px; left: auto; bottom: 168px; transform: none; }
+.layer-category { margin-top: 12px; }
+.layer-row .layer-top .name { flex: 1; }
+.layer-inputs { margin: 2px 0 8px; color: var(--text-2); font-size: 11px; }
+.layer-settings summary { cursor: pointer; color: var(--gold); padding: 5px 0; }
+.layer-settings label { display: block; margin: 7px 0 3px; font-size: 11px; }
+.layer-settings .btn { margin-top: 8px; }
+
+#variants .variant { cursor: default; }
+#variants .return-safe { color: #65d8ff; }
+#variants .return-limited { color: #ff8c36; }
+@media (max-width: 600px) { .focus-menu { bottom: 210px; } }
+
+.layer-row .layer-meta { justify-content: space-between; }

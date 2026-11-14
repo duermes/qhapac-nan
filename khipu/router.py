@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import heapq
 import math
+from typing import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -52,6 +53,7 @@ class RouterConfig:
     max_window_px: int = 420
     smooth: bool = True
     extra_penalty: np.ndarray | None = None
+    edge_cost: Callable[[float, float], float] | None = None
 
 
 @dataclass
@@ -107,7 +109,7 @@ def astar(terrain: TerrainContext, costmap: CostmapResult, start: tuple[int, int
 
     def h(idx: int) -> float:
         r, c = divmod(idx, W)
-        return math.hypot((c - tc) * mean_dx, (r - tr) * dy)
+        return 0.0 if cfg.edge_cost else math.hypot((c - tc) * mean_dx, (r - tr) * dy)
 
     heap = [(h(s), 0.0, s)]
     expanded = 0
@@ -132,7 +134,7 @@ def astar(terrain: TerrainContext, costmap: CostmapResult, start: tuple[int, int
             if closed[ni]:
                 continue
             ncost = cl[nr][nc]
-            if ncost == INF:
+            if ncost == INF or (dr and dc and (cl[nr][c] == INF or cl[r][nc] == INF)):
                 continue
             dist = math.hypot(dc * dxl[r], dr * dy)
             dz = zl[nr][nc] - zc
@@ -141,7 +143,10 @@ def astar(terrain: TerrainContext, costmap: CostmapResult, start: tuple[int, int
                 continue  # local step slope too steep (cliff)
             gdeg = math.degrees(math.atan(abs(grade)))
             dirf = 1.0 + (up if grade > 0 else down) * gdeg / cfg.max_step_slope_deg
-            step = dist * dirf * (1.0 + rw * 0.5 * (cc_cost + ncost)) * pl[nr][nc]
+            if cfg.edge_cost:
+                step = cfg.edge_cost(dist, math.copysign(gdeg, grade))
+            else:
+                step = dist * dirf * (1.0 + rw * 0.5 * (cc_cost + ncost)) * pl[nr][nc]
             ng = gcur + step
             if ng < gscore[ni]:
                 gscore[ni] = ng
@@ -315,8 +320,7 @@ def plan(terrain: TerrainContext, costmap: CostmapResult, start_ll: tuple[float,
     s = latlon_to_cell(terrain, *start_ll, role="origen")
     t = latlon_to_cell(terrain, *goal_ll, role="destino")
     check_goal(terrain, costmap, t, "destino", limit)
-    if costmap.tiers[s] == TIER_FORBIDDEN:
-        raise RouteInfeasible("origen_hazard", "El origen está en una celda prohibida.")
+    check_goal(terrain, costmap, s, "origen", limit)
     found = astar(terrain, costmap, s, t, cfg)
     if found is None:
         cfg2 = RouterConfig(**{**cfg.__dict__, "window_margin_px": cfg.window_margin_px * 3})
@@ -327,11 +331,22 @@ def plan(terrain: TerrainContext, costmap: CostmapResult, start_ll: tuple[float,
     vertices = any_angle_shortcut(terrain, costmap, found.cells, cfg.max_step_slope_deg,
                                   penalty=cfg.extra_penalty) if cfg.smooth else \
         [(float(r), float(c)) for r, c in found.cells]
+    cell_vertices = [(float(r), float(c)) for r, c in found.cells]
     # anchor the exact requested coordinates instead of cell centres
     g = terrain.geometry
     s_exact, t_exact = g.latlon_to_rc(*start_ll), g.latlon_to_rc(*goal_ll)
     vertices = [s_exact] + vertices[1:-1] + [t_exact] if len(vertices) >= 2 else [s_exact, t_exact]
+    def valid(path):
+        return all(segment_is_valid(terrain, costmap, a, b, cfg.max_step_slope_deg)
+                   for a, b in zip(path, path[1:]))
+
+    if not valid(vertices):
+        vertices = [s_exact, *cell_vertices, t_exact]
+        if not valid(vertices):
+            raise RouteInfeasible("no_path", "Sin conexión apta entre las coordenadas exactas y el corredor.")
     dense = smooth_path(terrain, costmap, vertices, cfg.max_step_slope_deg) if cfg.smooth else densify(vertices)
+    if not valid(dense):
+        dense = densify(vertices)
     pts = build_route(terrain, costmap, dense)
     return {"feasible": True, "cells": found.cells, "control_points": vertices, "points": pts,
             "expanded": found.expanded, "search_cost": found.cost}
@@ -390,13 +405,16 @@ def plan_variants(terrain: TerrainContext, costmap: CostmapResult, start_ll, goa
 
 
 def direct_route(terrain: TerrainContext, costmap: CostmapResult, start_ll, goal_ll) -> dict:
-    s = latlon_to_cell(terrain, *start_ll, role="origen")
-    t = latlon_to_cell(terrain, *goal_ll, role="destino")
-    verts = densify([(float(s[0]), float(s[1])), (float(t[0]), float(t[1]))])
+    latlon_to_cell(terrain, *start_ll, role="origen")
+    latlon_to_cell(terrain, *goal_ll, role="destino")
+    g = terrain.geometry
+    verts = densify([g.latlon_to_rc(*start_ll), g.latlon_to_rc(*goal_ll)])
     pts = build_route(terrain, costmap, verts)
-    blocked = any(p["tier"] == TIER_FORBIDDEN for p in pts)
-    return {"points": pts, "distance_m": pts[-1]["distance_m"] if pts else 0.0, "crosses_forbidden": blocked,
-            "euclidean_m": haversine_m(*start_ll, *goal_ll)}
+    for point, (lat, lon) in zip((pts[0], pts[-1]), (start_ll, goal_ll)):
+        point.update(lat=lat, lon=lon)
+    distance = haversine_m(*start_ll, *goal_ll)
+    return {"points": pts, "distance_m": distance, "crosses_forbidden": any(p["tier"] == TIER_FORBIDDEN for p in pts),
+            "euclidean_m": distance}
 
 
 def path_hits_obstacle(points: list[dict], obstacle: dict) -> bool:
