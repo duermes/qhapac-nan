@@ -1,194 +1,238 @@
-// Ñawi 3D world: local MOLA terrain (bilinear, 1:1 vertical), astronaut, route, POI markers.
 import * as THREE from "three";
 import { ASSET_REGISTRY } from "/static/shared/js/icons.js";
-
-const WINDOW_M = 3200;  // local terrain window around the start point
-const SEG = 160;
+import { Terrain3D } from "./world.js";
+import { CharacterController } from "./character.js";
 
 export class EvaScene {
   constructor(container, region, origin) {
     this.el = container;
     this.region = region;
-    this.origin = origin;  // {lat, lon}
-    const lat0 = origin.lat * Math.PI / 180;
+    this.origin = origin;
     this.mPerDegLat = 3396000 * Math.PI / 180;
-    this.mPerDegLon = this.mPerDegLat * Math.cos(lat0);
+    this.mPerDegLon = this.mPerDegLat * Math.cos(origin.lat * Math.PI / 180);
     this.z0 = region.elevationAt(origin.lat, origin.lon) ?? 0;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xc98a5a);
-    this.scene.fog = new THREE.Fog(0xc4875a, 400, 2600);
-    const w = container.clientWidth || 1000, h = container.clientHeight || 700;
-    this.camera = new THREE.PerspectiveCamera(62, w / h, 0.1, 8000);
+    this.scene.fog = new THREE.Fog(0xc4875a, 180, 2200);
+    this.camera = new THREE.PerspectiveCamera(65, container.clientWidth / container.clientHeight, 0.1, 8000);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    this.renderer.setSize(w, h);
+    this.renderer.setSize(container.clientWidth, container.clientHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
-    this.sun = new THREE.DirectionalLight(0xffe2c0, 1.7);
-    this.sun.position.set(600, 900, 300);
-    this.scene.add(this.sun, new THREE.HemisphereLight(0xe0a070, 0x3a1e10, 0.7));
     this.buildSky();
-    this.buildTerrain();
-    this.buildRocks();
-    this.astronaut = this.buildAstronaut();
-    this.scene.add(this.astronaut);
+    this.world = new Terrain3D(this.scene, this.camera, "JEZERO_MARS", (x, z) => this.molaY(x, z));
+    this.buildRegionalTerrain();
+    this.onRecharge = () => {};
+    this.onCollect = () => {};
+    this.character = new CharacterController(this.scene, this.camera, this.world, {
+      update() {}, updateDistanceToBase() {},
+      rechargeAtBase: () => this.onRecharge(), collectSample: () => this.onCollect()
+    });
+    this.astronaut = this.character.astronautMesh;
+    this.character.cameraManaged = true;
+    this.cameraSnap = true;
+    this.lookTarget = null;
+    this.cameraTargetPosition = new THREE.Vector3();
+    this.cameraLookPoint = new THREE.Vector3();
+    this.cameraTargetRotation = new THREE.Quaternion();
+    this.cameraMatrix = new THREE.Matrix4();
     this.markers = [];
     this.labelLayer = document.createElement("div");
     this.labelLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden";
     container.appendChild(this.labelLayer);
-    this.cameraMode = "third";
-    this.yaw = 0; this.pitch = -0.15;
+    this.routeGroup = new THREE.Group();
+    this.scene.add(this.routeGroup);
     new ResizeObserver(() => this.resize()).observe(container);
     this.bindLook();
   }
 
-  toLocal(lat, lon) { return { x: (lon - this.origin.lon) * this.mPerDegLon, z: -(lat - this.origin.lat) * this.mPerDegLat }; }
-  toLatLon(x, z) { return { lat: this.origin.lat - z / this.mPerDegLat, lon: this.origin.lon + x / this.mPerDegLon }; }
-  groundY(x, z) { const ll = this.toLatLon(x, z); const e = this.region.elevationAt(ll.lat, ll.lon); return e == null ? 0 : e - this.z0; }
+  toLocal(lat, lon) {
+    return { x: (lon - this.origin.lon) * this.mPerDegLon - 65, z: -(lat - this.origin.lat) * this.mPerDegLat - 60 };
+  }
+
+  toLatLon(x, z) {
+    return { lat: this.origin.lat - (z + 60) / this.mPerDegLat, lon: this.origin.lon + (x + 65) / this.mPerDegLon };
+  }
+
+  molaY(x, z) {
+    const ll = this.toLatLon(x, z);
+    return (this.region.elevationAt(ll.lat, ll.lon) ?? this.z0) - this.z0;
+  }
+
+  groundY(x, z) {
+    return Math.abs(x) <= 300 && Math.abs(z) <= 300 ? this.world.getSmoothHeightAt(x, z) : this.molaY(x, z);
+  }
+
+  surfaceElevation(x, z) { return this.z0 + this.groundY(x, z); }
+  get yaw() { return this.character.bodyHeading - Math.PI; }
+  set yaw(value) { this.character.bodyHeading = value + Math.PI; }
+  get pitch() { return this.character.helmetPitch; }
+  set pitch(value) { this.character.helmetPitch = value; }
+  get cameraMode() { return this.character.isFirstPerson ? "first" : "third"; }
+  set cameraMode(value) { this.character.isFirstPerson = value === "first"; this.cameraSnap = true; }
+  heading() { return ((-this.yaw * 180 / Math.PI) % 360 + 360) % 360; }
 
   buildSky() {
     const geo = new THREE.SphereGeometry(6000, 32, 16);
     const mat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
-      vertexShader: "varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);}",
-      fragmentShader: "varying vec3 vP; void main(){ float h = clamp(vP.y*1.6,0.0,1.0); vec3 low=vec3(0.80,0.55,0.38); vec3 high=vec3(0.35,0.20,0.16); gl_FragColor=vec4(mix(low,high,h),1.0);}" });
-    this.scene.add(new THREE.Mesh(geo, mat));
+      vertexShader: "varying vec3 vP; void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}",
+      fragmentShader: "varying vec3 vP;void main(){float h=clamp(vP.y*1.6,0.0,1.0);gl_FragColor=vec4(mix(vec3(.80,.55,.38),vec3(.35,.20,.16),h),1.0);}" });
+    this.sky = new THREE.Mesh(geo, mat);
+    this.scene.add(this.sky);
   }
 
-  buildTerrain() {
-    const geo = new THREE.PlaneGeometry(WINDOW_M, WINDOW_M, SEG, SEG);
+  buildRegionalTerrain() {
+    const geo = new THREE.PlaneGeometry(4800, 4800, 160, 160);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
-    const colors = [];
-    for (let i = 0; i < pos.count; i++) {
-      const y = this.groundY(pos.getX(i), pos.getZ(i));
-      pos.setY(i, y);
-      const n = Math.sin(pos.getX(i) * 0.05) * Math.cos(pos.getZ(i) * 0.04) * 0.04;
-      colors.push(0.62 + n, 0.36 + n * 0.6, 0.24 + n * 0.4);
+    for (let i = 0; i < pos.count; i++) pos.setY(i, this.molaY(pos.getX(i), pos.getZ(i)) - 0.2);
+    const indices = [];
+    for (let i = 0; i < geo.index.count; i += 3) {
+      const triangle = [geo.index.getX(i), geo.index.getX(i + 1), geo.index.getX(i + 2)];
+      if (!triangle.every(v => Math.abs(pos.getX(v)) <= 300 && Math.abs(pos.getZ(v)) <= 300)) indices.push(...triangle);
     }
-    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(indices);
     geo.computeVertexNormals();
-    this.terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false }));
-    this.scene.add(this.terrain);
+    this.regionalTerrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x8b4830, roughness: 1 }));
+    this.scene.add(this.regionalTerrain);
   }
 
-  buildRocks() {
-    // Decorative boulders (NOT derived from data; declared in Help).
-    let seed = 7;
-    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    const mat = new THREE.MeshStandardMaterial({ color: 0x6b3d28, roughness: 1, flatShading: true });
-    for (let i = 0; i < 140; i++) {
-      const x = (rnd() - 0.5) * WINDOW_M * 0.8, z = (rnd() - 0.5) * WINDOW_M * 0.8;
-      if (Math.hypot(x, z) < 12) continue;
-      const s = 0.4 + rnd() ** 3 * 4;
-      const m = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat);
-      m.position.set(x, this.groundY(x, z) + s * 0.3, z);
-      m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
-      m.scale.y = 0.6 + rnd() * 0.5;
-      m.userData.decorative = true;
-      this.scene.add(m);
-    }
-  }
-
-  buildAstronaut() {
-    const g = new THREE.Group();
-    const white = new THREE.MeshStandardMaterial({ color: 0xeef2f5, roughness: 0.6 });
-    const teal = new THREE.MeshStandardMaterial({ color: 0x36c4c9, roughness: 0.5 });
-    const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); g.add(b); return b; };
-    box(0.55, 0.7, 0.35, white, 0, 1.15, 0);              // torso
-    box(0.45, 0.55, 0.25, white, 0, 1.2, 0.3);            // PLSS backpack
-    box(0.18, 0.75, 0.2, white, -0.14, 0.4, 0); box(0.18, 0.75, 0.2, white, 0.14, 0.4, 0);   // legs
-    box(0.22, 0.1, 0.32, teal, -0.14, 0.05, -0.04); box(0.22, 0.1, 0.32, teal, 0.14, 0.05, -0.04);
-    box(0.14, 0.6, 0.16, white, -0.38, 1.15, 0); box(0.14, 0.6, 0.16, white, 0.38, 1.15, 0);   // arms
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 14), white); helmet.position.set(0, 1.7, 0); g.add(helmet);
-    const visor = new THREE.Mesh(new THREE.SphereGeometry(0.2, 20, 14, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0x0c2a12, emissive: 0x0a3d14, roughness: 0.2, metalness: 0.4 }));
-    visor.position.set(0, 1.71, -0.08); visor.rotation.y = Math.PI; g.add(visor);
-    return g;
-  }
-
-  setRoute(points) {
-    if (this.routeLine) { this.scene.remove(this.routeLine); this.routeLine.geometry.dispose(); }
-    if (!points?.length) return;
-    const pts = points.map((p) => { const l = this.toLocal(p.lat, p.lon); return new THREE.Vector3(l.x, this.groundY(l.x, l.z) + 0.15, l.z); });
-    const curve = new THREE.CatmullRomCurve3(pts);
-    const geo = new THREE.TubeGeometry(curve, Math.max(16, pts.length * 4), 0.09, 5, false);
-    this.routeLine = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x3fd0d8, transparent: true, opacity: 0.85 }));
-    this.scene.add(this.routeLine);
+  localEntities() {
+    const kinds = { base: "base", rover: "rover", astronaut: "astronaut", science: "poi", antenna: "antenna" };
+    const entries = this.world.pois.map((p, i) => ({
+      id: i === 0 ? "BASE_ALFA" : `EVA_POI_${i}`,
+      name: p.name, description: p.description, kind: i === 0 ? "base" : p.tag === "COMMS" ? "antenna" : kinds[p.type] === "base" ? "landmark" : kinds[p.type] || "landmark",
+      ...this.toLatLon(p.x, p.z), x: p.x, z: p.z, provenance: "synthetic"
+    }));
+    for (const s of this.world.collectibleSamples) entries.push({ id: s.id, kind: "sample", name: s.name, description: s.yield, ...this.toLatLon(s.x, s.z), x: s.x, z: s.z, provenance: "synthetic" });
+    return entries;
   }
 
   setMarkers(entities, iconFn) {
-    this.labelLayer.innerHTML = "";
-    this.markers.forEach((m) => m.obj && this.scene.remove(m.obj));
-    this.markers = entities.map((e) => {
+    this.labelLayer.replaceChildren();
+    this.markers = entities.map(e => {
       const reg = ASSET_REGISTRY[e.kind] || ASSET_REGISTRY.poi;
       const l = this.toLocal(e.lat, e.lon);
-      const y = this.groundY(l.x, l.z);
-      let obj = null;
-      if (e.kind === "rover") {
-        obj = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.4, 5), new THREE.MeshStandardMaterial({ color: 0x3fb8c4 }));
-        body.position.y = 1.4; obj.add(body);
-        [[-1.6, 1.7], [1.6, 1.7], [-1.6, -1.7], [1.6, -1.7]].forEach(([x, z]) => { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.5, 14), new THREE.MeshStandardMaterial({ color: 0x222 })); w.rotation.z = Math.PI / 2; w.position.set(x, 0.6, z); obj.add(w); });
-      } else if (e.kind === "base" || e.kind === "habitat") {
-        obj = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 4, 24, 1, false, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0xd9d2c3 }));
-        obj.rotation.z = Math.PI / 2; obj.rotation.y = Math.PI / 2;
-      } else if (e.kind === "antenna") {
-        obj = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 8, 8), new THREE.MeshStandardMaterial({ color: 0xbbbbbb }));
-        obj.position.y = 4;
-      } else if (e.kind === "astronaut") {
-        obj = this.buildAstronaut();
-      }
-      if (obj) { obj.position.x = l.x; obj.position.z = l.z; obj.position.y += y; this.scene.add(obj); }
       const el = document.createElement("div");
       el.className = "poi-label";
-      el.innerHTML = `<div class="ring" style="border-color:${reg.color};color:${reg.color}">${iconFn(reg.icon)}</div><div class="tag">${e.name.length > 22 ? e.name.slice(0, 21) + "…" : e.name}</div>`;
+      el.innerHTML = `<div class="ring" style="border-color:${reg.color};color:${reg.color}">${iconFn(reg.icon)}</div>`;
       this.labelLayer.appendChild(el);
-      return { e, el, obj, pos: new THREE.Vector3(l.x, y + (obj ? 6 : 2.5), l.z) };
+      return { e, el, pos: new THREE.Vector3(l.x, this.groundY(l.x, l.z) + (e.kind === "sample" ? 1.5 : 5), l.z) };
     });
+  }
+
+  setRoute(points, pnr = {}) {
+    this.routeGroup.traverse(obj => { obj.geometry?.dispose(); obj.material?.dispose(); });
+    this.routeGroup.clear();
+    if (!points || points.length < 2) return;
+    const expanded = [];
+    for (let i = 1; i < points.length; i++) {
+      const a = this.toLocal(points[i - 1].lat, points[i - 1].lon), b = this.toLocal(points[i].lat, points[i].lon);
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 2));
+      for (let j = i === 1 ? 0 : 1; j <= steps; j++) {
+        const x = a.x + (b.x - a.x) * j / steps, z = a.z + (b.z - a.z) * j / steps;
+        expanded.push({ point: new THREE.Vector3(x, this.groundY(x, z) + 0.35, z), segment: i - 1 });
+      }
+    }
+    for (const state of ["safe", "caution", "no_return"]) {
+      const positions = [];
+      for (let i = 1; i < expanded.length; i++) {
+        if ((pnr.segments?.[expanded[i].segment]?.state || "safe") === state) positions.push(expanded[i - 1].point, expanded[i].point);
+      }
+      if (positions.length) this.routeGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(positions), new THREE.LineBasicMaterial({ color: state === "safe" ? 0x00e5ff : 0xff8c00 })));
+    }
+    if (pnr.show_pnr && pnr.pnr_point) {
+      const l = this.toLocal(pnr.pnr_point.lat, pnr.pnr_point.lon);
+      const beacon = new THREE.Mesh(new THREE.OctahedronGeometry(1.2), new THREE.MeshBasicMaterial({ color: 0xffb300 }));
+      beacon.position.set(l.x, this.groundY(l.x, l.z) + 2, l.z);
+      this.routeGroup.add(beacon);
+    }
+    this.routeGroup.visible = !this.character.isInsideBase;
+  }
+
+  move(dt, keys, stopped = false, stamina = 100, controlDt = dt) {
+    const c = this.character;
+    c.keys = { forward: !stopped && keys.has("fwd"), backward: !stopped && keys.has("back"), left: keys.has("left"), right: keys.has("right") };
+    c.baseSpeed = 1.4 * Math.max(0.35, Math.min(1, stamina / 35));
+    const before = c.position.clone();
+    if (keys.has("left") || keys.has("right")) this.lookTarget = null;
+    c.update(dt, controlDt);
+    const distance = Math.hypot(c.position.x - before.x, c.position.z - before.z);
+    this.routeGroup.visible = !c.isInsideBase;
+    this.regionalTerrain.visible = !c.isInsideBase;
+    this.sky.visible = !c.isInsideBase;
+    return { x: c.position.x, z: c.position.z, distance, speed: distance / Math.max(dt, 0.001), gradient: distance > 0.001 && !c.isInsideBase ? (c.position.y - before.y) / distance : 0 };
+  }
+
+  updateMissionMonitor(vitals, samples) {
+    const ctx = this.world.monitorCanvas.getContext("2d");
+    ctx.fillStyle = "#101612";
+    ctx.fillRect(0, 0, 512, 256);
+    ctx.strokeStyle = "#b96f49";
+    ctx.strokeRect(8, 8, 496, 240);
+    ctx.fillStyle = "#dfbd80";
+    ctx.font = "bold 20px monospace";
+    ctx.fillText("HATUN WASI · BASE ALFA", 24, 43);
+    ctx.fillStyle = "#f3ebdc";
+    ctx.font = "14px monospace";
+    const lines = ["SIMULACIÓN DE ENTRENAMIENTO EVA", "Hábitat presurizado · traje conectado", `Oxígeno ${(vitals.o2_kg / 1.2 * 100).toFixed(1)}% · batería ${(vitals.battery_wh / 1100 * 100).toFixed(1)}%`, `Estamina ${vitals.effort.staminaPct.toFixed(0)}% · muestras ${samples}/16`, "[E] Consultar misión · [F] Salir por esclusa"];
+    lines.forEach((line, i) => ctx.fillText(line, 24, 82 + i * 32));
+    this.world.monitorTexture.needsUpdate = true;
   }
 
   bindLook() {
     let down = null;
-    const c = this.renderer.domElement;
-    c.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY, yaw: this.yaw, pitch: this.pitch }; c.setPointerCapture(e.pointerId); });
-    c.addEventListener("pointermove", (e) => {
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY, yaw: this.yaw, pitch: this.pitch }; this.lookTarget = { yaw: this.yaw, pitch: this.pitch }; canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener("pointermove", e => {
       if (!down) return;
-      this.yaw = down.yaw - (e.clientX - down.x) * 0.005;
-      this.pitch = Math.max(-0.9, Math.min(0.5, down.pitch - (e.clientY - down.y) * 0.004));
+      this.lookTarget = { yaw: down.yaw - (e.clientX - down.x) * 0.0016, pitch: Math.max(-0.6, Math.min(0.5, down.pitch - (e.clientY - down.y) * 0.0014)) };
     });
-    c.addEventListener("pointerup", () => { down = null; });
+    for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) canvas.addEventListener(event, () => { down = null; });
   }
 
-  /** yaw 0 = looking north (-z); heading in degrees clockwise from north */
-  heading() { return ((-this.yaw * 180 / Math.PI) % 360 + 360) % 360; }
-
-  update(x, z) {
-    const y = this.groundY(x, z);
-    const a = this.astronaut;
-    a.position.set(x, y, z);
-    a.rotation.y = this.yaw;
-    const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    if (this.cameraMode === "first") {
-      a.visible = false;
-      this.camera.position.set(x, y + 1.7, z);
-    } else {
-      a.visible = true;
-      const back = fwd.clone().multiplyScalar(-5.5);
-      this.camera.position.set(x + back.x + 1.2, y + 2.6, z + back.z);
+  update(x, z, dt = 0.016) {
+    if (this.lookTarget) {
+      const alpha = 1 - Math.exp(-12 * dt);
+      this.yaw += (this.lookTarget.yaw - this.yaw) * alpha;
+      this.pitch += (this.lookTarget.pitch - this.pitch) * alpha;
     }
-    const look = new THREE.Vector3(x, y + 1.6, z).add(fwd.clone().multiplyScalar(20)).add(new THREE.Vector3(0, Math.tan(this.pitch) * 20, 0));
-    this.camera.lookAt(look);
+    this.character.updatePosition(x, z);
+    this.updateCamera(dt);
+    this.world.updateDust(dt);
+    const inside = this.character.isInsideBase;
+    this.scene.fog = inside ? null : this.scene.fog || new THREE.Fog(0xc4875a, 180, 2200);
     this.renderer.render(this.scene, this.camera);
     const w = this.el.clientWidth, h = this.el.clientHeight;
     for (const m of this.markers) {
       const v = m.pos.clone().project(this.camera);
-      const dist = m.pos.distanceTo(a.position);
-      const vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1 && dist < 2500 && !m.hidden;
-      m.el.style.display = vis ? "" : "none";
-      if (vis) {
-        m.el.style.left = `${(v.x + 1) / 2 * w}px`;
-        m.el.style.top = `${(1 - v.y) / 2 * h}px`;
-        m.el.style.opacity = String(Math.max(0.45, 1 - dist / 2500));
-      }
+      const dist = m.pos.distanceTo(this.character.position);
+      const visible = !inside && !m.hidden && !m.collected && v.z > -1 && v.z < 1 && Math.abs(v.x) < 0.94 && Math.abs(v.y) < 0.9 && dist < 1800;
+      m.el.hidden = !visible;
+      if (visible) { m.el.style.left = `${(v.x + 1) / 2 * w}px`; m.el.style.top = `${(1 - v.y) / 2 * h}px`; }
     }
+  }
+
+  updateCamera(dt) {
+    const c = this.character, p = c.position;
+    const heading = c.bodyHeading + c.helmetYawOffset;
+    if (c.isFirstPerson) {
+      this.cameraTargetPosition.set(p.x, p.y + 2.15, p.z);
+      this.cameraLookPoint.set(p.x + Math.sin(heading) * 20, p.y + 2.15 + Math.sin(c.helmetPitch) * 20, p.z + Math.cos(heading) * 20);
+    } else {
+      this.cameraTargetPosition.set(p.x - Math.sin(c.bodyHeading) * 6.8, p.y + 3.4, p.z - Math.cos(c.bodyHeading) * 6.8);
+      this.cameraLookPoint.set(p.x, p.y + 1.8, p.z);
+    }
+    const snap = this.cameraSnap || this.camera.position.distanceTo(this.cameraTargetPosition) > 40;
+    const alpha = snap ? 1 : 1 - Math.exp(-10 * dt);
+    this.camera.position.lerp(this.cameraTargetPosition, alpha);
+    this.cameraMatrix.lookAt(this.camera.position, this.cameraLookPoint, this.camera.up);
+    this.cameraTargetRotation.setFromRotationMatrix(this.cameraMatrix);
+    this.camera.quaternion.slerp(this.cameraTargetRotation, snap ? 1 : 1 - Math.exp(-12 * dt));
+    this.cameraSnap = false;
   }
 
   resize() {

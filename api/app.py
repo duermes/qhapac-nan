@@ -452,6 +452,42 @@ def eva_vitals(req: S.EvaVitalsRequest):
                "model": "Minetti 2002 (g Marte, traje) + PLSS + Rohmert"})
 
 
+@app.post("/api/eva/surface-route")
+def eva_surface_route(req: S.EvaSurfaceRoute):
+    from khipu.geodesy import haversine_m
+    from khipu.resources import evaluate_pnr, route_metrics
+
+    asset = engine.find_entity(req.asset_id)
+    if not asset or asset.get("kind") != "astronaut":
+        raise HTTPException(422, "El activo debe ser un astronauta")
+    base = next((a for a in engine.scenario["assets"] if a["kind"] == "base"), None)
+    points = [p.model_dump() for p in req.points]
+    if base is None or any(haversine_m(base["lat"], base["lon"], p["lat"], p["lon"]) > 2000 for p in points):
+        raise HTTPException(422, "La ruta excede el radio de retorno a pie")
+    metrics = route_metrics(points, "astronaut", 1.4)
+    if metrics["max_grade_deg"] > 30:
+        raise HTTPException(422, "La ruta cruza una pendiente no transitable")
+    available = min(req.available_o2_kg, max(0, engine.ledger(req.asset_id, "astronaut").remaining))
+    return ok({"points": points, "metrics": metrics, "pnr": evaluate_pnr(points, "astronaut", available=available, speed_mps=1.4),
+               "provenance": "synthetic", "terrain_model": "MOLA regional + relieve local de entrenamiento"})
+
+
+@app.post("/api/eva/resupply")
+def eva_resupply(req: S.EvaResupplyRequest):
+    from khipu.geodesy import haversine_m
+
+    asset = engine.find_entity(req.asset_id)
+    if not asset or asset.get("kind") != "astronaut":
+        raise HTTPException(422, "El activo debe ser un astronauta")
+    base = next((a for a in engine.scenario["assets"] if a["kind"] == "base"), None)
+    if base is None or haversine_m(base["lat"], base["lon"], req.lat, req.lon) > 30:
+        raise HTTPException(422, "La recarga requiere regresar al hábitat")
+    ledger = engine.ledger(req.asset_id, "astronaut")
+    ledger.history.append({"event": "habitat_resupply", "previous_consumed": ledger.consumed, "remaining": ledger.capacity})
+    ledger.consumed = 0
+    return ok({"ledger": ledger.to_dict(), "o2_kg": ledger.capacity, "water_kg": 3.6, "battery_wh": 1100})
+
+
 @app.get("/api/ledger/{asset_id}")
 def ledger_get(asset_id: str, profile: S.Profile = "rover"):
     return ok(engine.ledger(asset_id, profile).to_dict())

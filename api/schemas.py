@@ -165,6 +165,24 @@ class EvaVitalsRequest(BaseModel):
     walkback_limit_m: float = 2000.0
 
 
+class EvaSurfacePoint(BaseModel):
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lon: float = Field(ge=-180, le=360, allow_inf_nan=False)
+    elevation_m: float = Field(allow_inf_nan=False)
+
+
+class EvaSurfaceRoute(BaseModel):
+    asset_id: str
+    points: list[EvaSurfacePoint] = Field(min_length=2, max_length=2000)
+    available_o2_kg: float = Field(ge=0, le=1.2)
+
+
+class EvaResupplyRequest(BaseModel):
+    asset_id: str
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lon: float = Field(ge=-180, le=360, allow_inf_nan=False)
+
+
 class LedgerConsume(BaseModel):
     amount: float = Field(ge=0)
     profile: Profile = "rover"

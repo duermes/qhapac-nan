@@ -38,4 +38,5 @@ def test_3d_mantle_mesh_drape_and_geodetic_aspect(client):
 
 def test_no_fictional_pentagon_loop_in_eva_tracks():
     hud = read("hud/js/hud.js") + read("hud/js/scene.js")
-    assert "pentagon" not in hud.lower() and "api.route(" in hud
+    assert "pentagon" not in hud.lower()
+    assert 'evaRequest("surface-route"' in hud and "localRoute(scene" in hud

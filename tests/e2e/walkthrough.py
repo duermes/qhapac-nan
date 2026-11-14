@@ -812,21 +812,21 @@ def hud_flows(br):
     check("Alert priority: critical first, banner above the reticle", ["FC-118", "FC-125"], alerts)
 
     def airlock():
-        # move the astronaut next to a sample, collect it, then next to the base airlock
-        pg.evaluate("() => { const l = nawi.scene.toLocal(18.4485, 77.4530); nawi.x = l.x + 5; nawi.z = l.z; }")
+        pg.evaluate("() => { const s = nawi.scene.world.collectibleSamples[0]; nawi.x = s.x + 2; nawi.z = s.z; }")
         pg.wait_for_timeout(500)
         p1 = pg.locator("#prompt").inner_text()
         pg.keyboard.press("e")
         smp = pg.locator("#samples").inner_text()
-        pg.evaluate("() => { const l = nawi.scene.toLocal(18.4447, 77.4508); nawi.x = l.x + 20; nawi.z = l.z; }")
+        pg.evaluate("() => { nawi.x = -65; nawi.z = -44; }")
         pg.wait_for_timeout(500)
         p2 = pg.locator("#prompt").inner_text()
         pg.keyboard.press("f")
-        pg.wait_for_selector(".modal", timeout=5000)
-        t = pg.locator(".modal").inner_text()
-        pg.click(".modal footer .btn-gold")
-        assert_true("[E]" in p1 and smp == "1/16" and "[F]" in p2 and "completado" in t, f"{p1} {smp} {p2}")
-        return {"sample_prompt": p1, "samples": smp, "airlock_prompt": p2, "modal": t[:120]}
+        pg.wait_for_function("nawi.inside && !nawi.resupplying", timeout=10000)
+        interior = pg.evaluate("() => nawi.scene.world.baseInteriorGroup.visible")
+        pg.keyboard.press("f")
+        pg.wait_for_function("!nawi.inside")
+        assert_true("[E]" in p1 and smp == "1/16" and "[F]" in p2 and interior, f"{p1} {smp} {p2}")
+        return {"sample_prompt": p1, "samples": smp, "airlock_prompt": p2, "interior_visible": interior}
     check("Sample collection and airlock proximity prompt / return to habitat", ["FC-121", "FC-122"], airlock)
 
     realh = lambda: [e for e in pg.errors if "status of 422" not in e]
