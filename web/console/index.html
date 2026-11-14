@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hatun Wasi — Qhapaq Ñan</title>
+  <link rel="stylesheet" href="/static/shared/css/qn.css" />
+  <link rel="stylesheet" href="/static/console/css/console.css" />
+  <script type="importmap">{ "imports": { "three": "/static/vendor/three/three.module.js", "three/addons/": "/static/vendor/three/addons/" } }</script>
+</head>
+<body class="console">
+  <main id="stage" class="stage" aria-label="Mapa de misión">
+    <canvas id="map2d" class="map2d" aria-label="Mapa 2D del terreno" tabindex="0"></canvas>
+    <div id="map3d" class="map3d" hidden aria-label="Vista 3D del terreno"></div>
+    <div id="empty-state" class="empty-region panel" hidden role="alert"></div>
+  </main>
+
+  <!-- top-left: brand, menu, search, sessions -->
+  <div class="tl">
+    <div class="tl-row">
+      <div id="brand"></div>
+      <button id="menu-btn" class="btn btn-icon panel menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="Menú principal" title="Menú (Alt+M)"></button>
+      <div class="search panel" role="search">
+        <span data-icon="search"></span>
+        <input id="search" class="search-input" type="search" placeholder="Buscar POI, topónimo…" aria-label="Buscar POI o topónimo" autocomplete="off" />
+        <button id="search-clear" class="btn btn-icon search-clear" aria-label="Limpiar búsqueda" hidden></button>
+        <div id="search-results" class="search-results panel" role="listbox" hidden></div>
+      </div>
+    </div>
+    <nav id="menubar" class="menubar panel" hidden aria-label="Menús"></nav>
+    <div id="sessions" class="tabs session-tabs" role="tablist" aria-label="Sesiones de trabajo"></div>
+  </div>
+
+  <!-- top-right: view switch, focused sector, active layer -->
+  <div class="tr">
+    <div class="view-switch panel" role="group" aria-label="Modo de vista">
+      <button id="view-2d" class="btn" aria-pressed="true"><span data-icon="map"></span>2D</button>
+      <button id="view-3d" class="btn" aria-pressed="false"><span data-icon="cube"></span>3D</button>
+    </div>
+    <div id="sector-pill" class="pill panel" aria-live="polite"><span data-icon="globe"></span><span><span class="muted">Sector enfocado:</span> <b id="sector-name">—</b> <span id="sector-meta" class="muted"></span></span></div>
+    <div id="layer-pill" class="pill panel"><span data-icon="layers"></span><span><span class="muted">Capa activa:</span> <b id="active-layer-name">Relieve MOLA</b></span> <span id="active-layer-badge"></span></div>
+  </div>
+
+  <!-- left: planning panel -->
+  <aside id="planning" class="planning panel cut" aria-label="Planificar travesía">
+    <header class="panel-head"><span>Planificar travesía</span>
+      <button id="planning-collapse" class="btn btn-icon" aria-label="Contraer planificación" title="Contraer (P)"></button></header>
+    <div class="panel-body planning-body">
+      <label class="label" for="origin">Origen:</label>
+      <select id="origin" class="select"><option value="">Selecciona el origen</option></select>
+      <div class="coord-edit" data-for="origin"><input class="input mono" id="origin-lat" aria-label="Latitud origen" placeholder="lat" /><input class="input mono" id="origin-lon" aria-label="Longitud origen" placeholder="lon" /></div>
+      <label class="label" for="destination" style="margin-top:10px">Destino:</label>
+      <select id="destination" class="select"><option value="">Selecciona el destino</option></select>
+      <div class="coord-edit" data-for="destination"><input class="input mono" id="destination-lat" aria-label="Latitud destino" placeholder="lat" /><input class="input mono" id="destination-lon" aria-label="Longitud destino" placeholder="lon" /></div>
+      <div id="waypoint-list" class="waypoint-list"></div>
+      <button id="calculate" class="btn btn-gold calc"><span data-icon="route"></span>Calcular</button>
+      <div id="route-alert" role="alert"></div>
+      <div id="variants" class="variants"></div>
+      <hr class="joint" />
+      <div class="route-display btn-row" role="group" aria-label="Visualización de rutas">
+        <button id="show-direct" class="btn route-toggle" aria-pressed="true"><i class="sw direct"></i>Ruta directa</button>
+        <button id="show-calculated" class="btn route-toggle" aria-pressed="true"><i class="sw calcd"></i>Ruta calculada</button>
+      </div>
+      <hr class="joint" />
+      <div class="btn-row">
+        <button id="save-route" class="btn"><span data-icon="save"></span>Guardar ruta</button>
+        <button id="nearby-pois" class="btn"><span data-icon="pin"></span>POIs cercanos</button>
+        <button id="metrics" class="btn"><span data-icon="chart"></span>Métricas</button>
+        <button id="replan" class="btn"><span data-icon="shield"></span>Replanificar</button>
+      </div>
+      <hr class="joint" />
+      <details id="mission-params">
+        <summary>Parámetros de misión</summary>
+        <div class="params"></div>
+      </details>
+      <hr class="joint" />
+      <details id="export-manage">
+        <summary>Exportar y gestionar</summary>
+        <div class="btn-row">
+          <button class="btn" data-export="geojson"><span data-icon="download"></span>GeoJSON</button>
+          <button class="btn" data-export="sasf"><span data-icon="download"></span>SASF</button>
+          <button class="btn" data-export="csv"><span data-icon="download"></span>CSV</button>
+          <button class="btn" id="import-route"><span data-icon="upload"></span>Importar</button>
+          <button class="btn" id="save-project"><span data-icon="save"></span>Guardar proyecto</button>
+          <button class="btn btn-danger" id="delete-route"><span data-icon="trash"></span>Borrar ruta</button>
+        </div>
+        <input type="file" id="import-file" accept=".geojson,.json,application/json" hidden />
+      </details>
+    </div>
+  </aside>
+  <button id="planning-reopen" class="btn panel reopen-planning" hidden aria-label="Reabrir planificación"><span data-icon="expand"></span>Planificar</button>
+
+  <!-- right: traverses rack -->
+  <aside id="traverses" class="traverses panel cut" aria-label="Travesías">
+    <header class="panel-head"><span>Travesías <span id="traverse-count" class="badge">0 Rutas</span></span>
+      <span style="display:flex;gap:6px"><button id="new-traverse" class="btn" aria-label="Nueva travesía"><span data-icon="plus"></span><span class="lbl">Nueva travesía</span></button>
+      <button id="traverse-toggle" class="btn btn-icon rack-toggle" aria-expanded="true" aria-label="Plegar travesías"></button></span></header>
+    <div id="traverse-list" class="panel-body traverse-list"></div>
+  </aside>
+
+  <!-- bottom: dock -->
+  <nav id="dock" class="dock panel cut console-dock" aria-label="Modos">
+    <button class="dock-btn" data-mode="general"><span data-icon="map"></span>General</button>
+    <button class="dock-btn" data-mode="analyze"><span data-icon="layers"></span>Analizar<span class="eye" role="switch" tabindex="0" aria-pressed="true" aria-label="Mostrar capas analíticas" data-eye="analyze"></span></button>
+    <button class="dock-btn" data-mode="plan"><span data-icon="sliders"></span>Planificar<span class="eye" role="switch" tabindex="0" aria-pressed="true" aria-label="Mostrar rutas" data-eye="plan"></span></button>
+    <button class="dock-btn" data-mode="focus"><span data-icon="focus"></span>Enfocar</button>
+  </nav>
+  <div id="focus-menu" class="focus-menu panel" hidden role="menu" aria-label="Enfocar sector"></div>
+
+  <!-- bottom-left: scale bar -->
+  <div id="scalebar" class="scalebar panel" aria-label="Barra de escala"><div class="sb-text mono"></div><div class="sb-bar"><i></i></div><div class="sb-ticks mono"><span>0</span><span class="sb-mid"></span><span class="sb-end"></span></div></div>
+
+  <!-- bottom-right: point/legend buttons, coordinate HUD, NASA line -->
+  <div class="br">
+    <div class="quick panel" id="quick-dock">
+      <button id="new-point" class="btn" aria-pressed="false"><span data-icon="pin"></span>Nuevo punto</button>
+      <button id="legend-btn" class="btn"><span data-icon="book"></span>Leyenda</button>
+    </div>
+    <div class="coords panel mono" id="coord-hud" aria-live="off">
+      <div><span>LAT</span><b id="hud-lat">—</b></div>
+      <div><span>LON</span><b id="hud-lon">—</b></div>
+      <div><span>ELEV</span><b id="hud-elev">—</b></div>
+      <div><span>SLOPE</span><b id="hud-slope">—</b></div>
+      <div><span>ZOOM</span><b id="hud-zoom">—</b></div>
+    </div>
+    <div class="nasa-line mono" id="nasa-line">NASA: consultando…</div>
+  </div>
+
+  <div id="decks"></div>
+  <script type="module" src="/static/console/js/app.js"></script>
+</body>
+</html>

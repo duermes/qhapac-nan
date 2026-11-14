@@ -1,0 +1,164 @@
+/* Hatun Wasi layout: brand/sessions top-left, planning left, traverses right, dock bottom. */
+.stage { position: fixed; inset: 0; }
+.map2d, .map3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.map2d { cursor: grab; touch-action: none; }
+.map2d.adding { cursor: crosshair; }
+.empty-region { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 18px 22px; max-width: 460px; z-index: 5; }
+
+.tl { position: fixed; left: 12px; top: 12px; z-index: 20; display: flex; flex-direction: column; gap: 10px; }
+.tl-row { display: flex; gap: 10px; align-items: stretch; }
+.menu-btn { width: 40px; height: auto; min-height: 48px; }
+.search { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 10px; width: 250px; color: var(--text-2); }
+.search-input { flex: 1; background: transparent; border: 0; outline: none; height: 46px; color: var(--text-1); min-width: 0; }
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-clear { width: 26px; min-height: 26px; }
+.search-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 320px; overflow: auto; z-index: 60; }
+.search-results button { display: flex; width: 100%; text-align: left; gap: 8px; padding: 8px 10px; background: none; border: 0; border-bottom: 1px solid var(--joint); cursor: pointer; color: var(--text-1); }
+.search-results button:hover, .search-results button:focus { background: rgba(223,189,128,.08); }
+.menubar { display: flex; gap: 0; padding: 4px; position: relative; flex-wrap: wrap; max-width: calc(100vw - 24px); }
+.menubar > .menu { position: relative; }
+.menubar .menu > button { background: none; border: 0; padding: 7px 12px; cursor: pointer; color: var(--text-1); }
+.menubar .menu > button[aria-expanded="true"] { color: var(--gold); box-shadow: inset 0 -2px 0 var(--gold); }
+.menubar .menu-list { position: absolute; top: 100%; left: 0; min-width: 240px; z-index: 70; padding: 4px; }
+.menubar .menu-list button { display: flex; justify-content: space-between; width: 100%; padding: 7px 10px; background: none; border: 0; text-align: left; cursor: pointer; color: var(--text-1); gap: 16px; }
+.menubar .menu-list button:hover, .menubar .menu-list button:focus { background: rgba(223,189,128,.08); color: var(--gold); }
+.menubar .menu-list kbd { color: var(--text-3); font-family: var(--font-mono); font-size: 11px; }
+.session-tabs { background: var(--glass); backdrop-filter: blur(var(--glass-blur)); width: max-content; }
+.session-tabs .tab { width: 86px; justify-content: space-between; } /* fixed size: no jump when tabs are added */
+.session-tabs .add { width: 34px; min-width: 34px; justify-content: center; border-right: 1px solid var(--joint); }
+
+.tr { position: fixed; right: 12px; top: 12px; z-index: 20; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.view-switch { display: flex; padding: 3px; gap: 3px; }
+.view-switch .btn { min-width: 62px; }
+.pill { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12px; max-width: 420px; }
+.pill b { font-weight: 600; }
+
+.planning { position: fixed; left: 12px; top: 128px; width: 256px; max-height: calc(100vh - 220px); z-index: 15; display: flex; flex-direction: column; }
+.planning-body { overflow: auto; }
+.coord-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
+.coord-edit .input { min-height: 24px; padding: 2px 6px; font-size: 11px; }
+.calc { width: 100%; margin-top: 12px; min-height: 36px; }
+.route-toggle { font-size: 11px; padding: 4px 6px; min-height: 28px; white-space: nowrap; gap: 6px; }
+.route-toggle .sw { display: inline-block; flex: none; align-self: center; width: 12px; height: 2px; }
+.planning .btn-row .btn { font-size: 12px; white-space: nowrap; padding: 6px 6px; gap: 5px; }
+.route-toggle .sw.direct { background: var(--route-direct); }
+.route-toggle .sw.calcd { background: var(--route-calc); }
+.route-toggle[aria-pressed="false"] { opacity: .55; }
+.variants { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.variant { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 8px; border: 1px solid var(--joint); cursor: pointer; background: rgba(11,16,13,.5); text-align: left; color: var(--text-1); }
+.variant.active { border-color: var(--route-calc); background: rgba(240,162,75,.08); }
+.variant small { color: var(--text-2); font-family: var(--font-mono); grid-column: 1 / -1; }
+#route-alert:not(:empty) { margin-top: 8px; }
+.params label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); margin-top: 8px; }
+.params label b { color: var(--text-1); font-family: var(--font-mono); font-weight: 500; }
+.params .reset-row { display: flex; gap: 6px; margin-top: 8px; }
+.waypoint-list:not(:empty) { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.waypoint-list .wp { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 3px 6px; border: 1px solid var(--joint); }
+.reopen-planning { position: fixed; left: 12px; top: 128px; z-index: 15; }
+
+.traverses { position: fixed; right: 12px; top: 176px; width: 284px; z-index: 15; max-height: calc(100vh - 360px); display: flex; flex-direction: column; }
+.traverses.collapsed .traverse-list { display: none; }
+.rack-toggle { border: 1px solid var(--joint-strong); }
+#new-traverse { white-space: nowrap; font-size: 12px; padding: 4px 10px; min-height: 30px; }
+.traverses .panel-head > span:first-child { white-space: nowrap; display: flex; gap: 8px; align-items: center; }
+.rack-toggle svg { transition: transform .15s; transform: rotate(-90deg); }
+.traverses.collapsed .rack-toggle svg { transform: rotate(90deg); }
+.traverse-list { overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.trav { border: 1px solid var(--joint); padding: 8px; background: rgba(11,16,13,.45); cursor: pointer; }
+.trav.active { border-color: var(--gold-dim); }
+.trav-head { display: flex; align-items: center; gap: 6px; }
+.trav-head .dot { width: 6px; height: 6px; background: var(--info); flex: none; }
+.trav-name { flex: 1; font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trav-name input { width: 100%; }
+.trav .btn-icon { width: 24px; min-height: 24px; border-color: transparent; background: transparent; }
+.trav .btn-icon:hover { border-color: var(--joint-strong); }
+.trav-sub { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); margin: 6px 0; }
+.trav-foot { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-2); }
+.trav-foot .st-active { color: var(--gold); letter-spacing: .1em; }
+
+.console-dock { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 20; }
+.focus-menu { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 25; padding: 6px; display: flex; flex-direction: column; min-width: 280px; }
+.focus-menu button { text-align: left; padding: 8px 10px; background: none; border: 0; color: var(--text-1); cursor: pointer; display: flex; justify-content: space-between; gap: 10px; }
+.focus-menu button:hover, .focus-menu button:focus { background: rgba(223,189,128,.08); color: var(--gold); }
+
+.scalebar { position: fixed; left: 12px; bottom: 12px; z-index: 18; padding: 6px 10px; min-width: 120px; }
+.sb-text { font-size: 11px; font-weight: 600; }
+.sb-bar { height: 6px; margin: 4px 0 2px; position: relative; }
+.sb-bar i { display: block; height: 6px; background: linear-gradient(90deg, var(--copper) 50%, var(--text-1) 50%); border: 1px solid rgba(0,0,0,.5); }
+.sb-ticks { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-2); }
+
+.br { position: fixed; right: 12px; bottom: 10px; z-index: 18; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.quick { display: flex; gap: 6px; padding: 6px; }
+.coords { display: grid; grid-template-columns: repeat(5, auto); gap: 14px; padding: 7px 12px; }
+.coords div { display: flex; flex-direction: column; gap: 2px; }
+.coords span { font-size: 9px; color: var(--text-2); letter-spacing: .1em; }
+.coords b { font-size: 12px; font-weight: 600; }
+.nasa-line { font-size: 10px; color: var(--text-2); text-shadow: 0 1px 2px #000; }
+
+.deck .legend-ramp { height: 8px; margin: 4px 0; border: 1px solid var(--joint); }
+.layer-row { border-bottom: 1px solid var(--joint); padding: 8px 0; }
+.layer-row:last-child { border-bottom: 0; }
+.layer-top { display: flex; align-items: center; gap: 8px; }
+.layer-top .name { flex: 1; font-size: 12px; }
+.layer-meta { display: flex; gap: 6px; align-items: center; font-size: 10px; color: var(--text-2); margin-top: 4px; flex-wrap: wrap; }
+.layer-ctrl { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; margin-top: 6px; }
+.layer-ctrl .btn { min-height: 24px; padding: 2px 6px; font-size: 11px; }
+#deck-layers { width: 330px; max-height: min(560px, calc(100vh - 160px)); }
+#deck-metrics { width: 520px; max-width: calc(100vw - 32px); }
+.metrics-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.metrics-table th, .metrics-table td { padding: 5px 6px; border-bottom: 1px solid var(--joint); text-align: right; }
+.metrics-table th:first-child, .metrics-table td:first-child { text-align: left; color: var(--text-2); }
+.metrics-table td { font-family: var(--font-mono); }
+.risk-list { display: flex; flex-direction: column; gap: 5px; }
+.risk-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--joint); }
+.risk-item .lvl { font-size: 10px; text-transform: uppercase; }
+.lvl-alto, .lvl-prohibido, .lvl-pérdida, .lvl-Atascado { color: var(--danger); }
+.lvl-precaución, .lvl-proximidad, .lvl-baja, .lvl-Degradado, .lvl-Moderado { color: var(--warn); }
+.lvl-bajo, .lvl-nominal, .lvl-adecuada, .lvl-Firme, .lvl-libre { color: var(--safe); }
+.lvl-sin\ datos, .lvl-noche { color: var(--text-3); }
+.legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.legend-item .sw { width: 14px; height: 14px; border: 1.5px solid; flex: none; }
+.legend-item label { flex: 1; }
+.popover .pop-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--joint); }
+.popover .pop-title { font-weight: 600; }
+.popover .pop-kind { font-size: 10px; color: var(--text-2); letter-spacing: .1em; text-transform: uppercase; margin-top: 2px; }
+.popover .pop-body { padding: 10px 12px; }
+.popover .pop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 12px 12px; }
+.popover .pop-actions .btn { min-height: 28px; font-size: 11px; padding: 4px 6px; }
+.popover form { display: grid; gap: 6px; }
+.labels3d .m3d { pointer-events: none; }
+
+@media (max-width: 900px) {
+  /* responsive: panels become compact drawers; every function stays reachable */
+  .search { width: 150px; }
+  .planning { top: auto; bottom: 84px; left: 8px; width: min(300px, calc(100vw - 16px)); max-height: 44vh; }
+  .reopen-planning { top: auto; bottom: 84px; left: 8px; }
+  .traverses { top: 120px; right: 8px; width: min(250px, calc(100vw - 16px)); max-height: 28vh; }
+  .pill { max-width: 56vw; }
+  .coords { grid-template-columns: repeat(3, auto); gap: 8px; }
+  .scalebar { bottom: 84px; left: auto; right: 8px; }
+  .br { bottom: auto; top: 50%; transform: translateY(-50%); }
+  .nasa-line { display: none; } /* also in Help → Datos NASA */
+  .dock-btn { width: 62px; height: 52px; }
+}
+@media (max-width: 600px) {
+  .brand-sub { display: none; }
+  .brand-name { font-size: 14px; letter-spacing: .08em; }
+  .brand { padding: 6px 8px; min-height: 40px; }
+  .search { width: 44px; padding: 0 6px; }
+  .search:focus-within { width: calc(100vw - 120px); }
+  .search-input { height: 38px; }
+  .tr .pill { font-size: 10px; padding: 4px 8px; max-width: 58vw; }
+  #layer-pill { display: none; } /* active layer shown in the Analizar deck */
+  /* drawers: planning is a full-width bottom drawer above the dock */
+  .planning { left: 8px; right: 8px; width: auto; bottom: 80px; max-height: 52vh; z-index: 19; }
+  .reopen-planning { left: 8px; bottom: 80px; top: auto; }
+  .traverses { top: 112px; right: 8px; width: min(260px, calc(100vw - 16px)); z-index: 16; }
+  #new-traverse .lbl { display: none; }
+  .br { top: auto; transform: none; bottom: 80px; right: 8px; gap: 6px; }
+  .quick { padding: 4px; }
+  .quick .btn { font-size: 11px; padding: 4px 8px; min-height: 30px; }
+  .coords { grid-template-columns: repeat(3, auto); gap: 6px 10px; padding: 5px 8px; }
+  .coords b { font-size: 11px; }
+  .scalebar { left: 8px; right: auto; bottom: 80px; min-width: 0; }
+}

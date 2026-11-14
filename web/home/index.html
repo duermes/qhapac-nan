@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Qhapaq Ñan — Portal</title>
+  <link rel="stylesheet" href="/static/shared/css/qn.css" />
+  <style>
+    body { overflow: auto; background:
+      radial-gradient(1200px 600px at 75% -10%, rgba(185,111,73,.18), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(223,189,128,.035) 0 1px, transparent 1px 64px),
+      repeating-linear-gradient(90deg, rgba(223,189,128,.035) 0 1px, transparent 1px 96px), var(--basalt-1); }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 16px 40px; }
+    header.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .hero { margin: 40px 0 26px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: end; }
+    .hero h1 { font-size: clamp(30px, 5vw, 52px); letter-spacing: .12em; margin: 0; font-weight: 700; }
+    .hero h1 span { color: var(--copper); }
+    .hero p { color: var(--text-2); font-size: 15px; line-height: 1.6; max-width: 60ch; }
+    .steps { display: flex; gap: 0; margin: 14px 0 0; }
+    .steps i { display: block; width: 46px; height: 8px; border: 1px solid var(--copper); border-right: 0; }
+    .steps i:nth-child(2) { margin-top: -8px; } .steps i:nth-child(3) { margin-top: -16px; } .steps i:last-child { border-right: 1px solid var(--copper); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card { display: flex; flex-direction: column; gap: 10px; padding: 18px; text-decoration: none; color: inherit; min-height: 230px; transition: border-color .15s, transform .15s; }
+    .card:hover, .card:focus-visible { border-color: var(--gold); transform: translateY(-2px); }
+    .card h2 { margin: 0; font-size: 20px; letter-spacing: .1em; }
+    .card .role { color: var(--gold); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+    .card p { color: var(--text-2); margin: 0; line-height: 1.5; flex: 1; }
+    .card .go { color: var(--gold); display: flex; align-items: center; gap: 6px; font-weight: 600; }
+    .card svg.big { width: 34px; height: 34px; color: var(--copper); }
+    .status { margin-top: 22px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .status .panel { padding: 12px 14px; }
+    .status b { display: block; font-family: var(--font-mono); font-size: 15px; margin-top: 4px; }
+    .khipu { margin-top: 22px; padding: 16px 18px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    footer { margin-top: 28px; color: var(--text-3); font-size: 11px; line-height: 1.6; }
+    @media (max-width: 860px) { .hero, .grid { grid-template-columns: 1fr; } .status { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div id="brand"></div>
+      <div class="muted mono" id="clock" aria-live="off"></div>
+    </header>
+    <section class="hero">
+      <div>
+        <div class="kicker">Planificación y guía de navegación de superficie marciana</div>
+        <h1>QHAPAQ <span>ÑAN</span></h1>
+        <div class="steps" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <p>Explora el terreno, evalúa riesgos, planifica travesías y conserva un margen de retorno seguro. <strong>Khipu</strong>, el núcleo analítico compartido, alimenta las tres interfaces operativas con el mismo modelo de misión.</p>
+      </div>
+      <p class="muted" style="font-size:12px">Apoyo de decisión dentro de los datos, umbrales y supuestos declarados — no certifica seguridad operacional. Prioridad: la vida antes que la ciencia.</p>
+    </section>
+    <nav class="grid" aria-label="Interfaces operativas">
+      <a class="card panel cut" href="/console" id="go-console">
+        <span data-icon="map" class="ic"></span>
+        <div class="role">Científicos · planificadores</div>
+        <h2>HATUN WASI</h2>
+        <p>Consola de misión: mapa 2D/3D MOLA, capas analíticas, planificación multicriterio, travesías, métricas y punto de no retorno.</p>
+        <span class="go">Abrir consola <span data-icon="arrowright"></span></span>
+      </a>
+      <a class="card panel cut" href="/rover" id="go-rover">
+        <span data-icon="truck" class="ic"></span>
+        <div class="role">Operadores de rover</div>
+        <h2>CHASKI</h2>
+        <p>Monitor táctico del rover: mapa topográfico, guía de ruta, piloto automático, recursos, enlace, tracción y parada de emergencia.</p>
+        <span class="go">Abrir monitor <span data-icon="arrowright"></span></span>
+      </a>
+      <a class="card panel cut" href="/hud" id="go-hud">
+        <span data-icon="person" class="ic"></span>
+        <div class="role">Astronautas en EVA</div>
+        <h2>ÑAWI</h2>
+        <p>Visor de supervivencia EVA: escena 3D, O₂, batería, FC, estamina, walkback, objetivo, alertas priorizadas y esclusa.</p>
+        <span class="go">Abrir visor <span data-icon="arrowright"></span></span>
+      </a>
+    </nav>
+    <section class="status" aria-label="Estado de Khipu">
+      <div class="panel"><span class="kicker">Servicio</span><b id="st-health">…</b></div>
+      <div class="panel"><span class="kicker">Topografía</span><b id="st-data">…</b></div>
+      <div class="panel"><span class="kicker">Hora marciana (Jezero)</span><b id="st-mars">…</b></div>
+      <div class="panel"><span class="kicker">Clima NASA</span><b id="st-weather">…</b></div>
+    </section>
+    <section class="khipu panel">
+      <span data-icon="radio"></span>
+      <div style="flex:1;min-width:220px"><strong>Khipu</strong> — copiloto local por reglas. Funciona sin conexión a servicios de IA; la voz usa el navegador si está disponible.</div>
+      <a class="btn" href="/static/home/data.html">Procedencia de datos</a>
+    </section>
+    <footer>
+      Topografía: MGS MOLA MEGDR MEGT44N000HB (NASA PDS Geosciences). Entidades de misión, zonas de exclusión y muestras: escenario sintético rotulado.
+      La inspiración andina (piedra, caminos, escalones, cobre y oro) es una interpretación visual del equipo, no una reconstrucción histórica.
+    </footer>
+  </div>
+  <script type="module">
+    import { icon, brandBlock } from "/static/shared/js/icons.js";
+    import { api } from "/static/shared/js/api.js";
+    document.getElementById("brand").innerHTML = brandBlock("Portal · Núcleo Khipu");
+    document.querySelectorAll("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon, el.classList.contains("ic") ? "big" : "icon"); });
+    const set = (id, t, cls) => { const e = document.getElementById(id); e.textContent = t; if (cls) e.style.color = cls; };
+    api.health().then((h) => {
+      set("st-health", h.status === "ok" ? "Operativo" : h.status, "var(--safe)");
+      set("st-data", h.data.macro_available ? "MOLA cargado" : "Sin datos (modo vacío)", h.data.macro_available ? "var(--safe)" : "var(--warn)");
+    }).catch(() => { set("st-health", "Sin conexión", "var(--danger)"); set("st-data", "—"); });
+    const tick = () => api.marsTime(18.44, 77.45).then((m) => {
+      const h = Math.floor(m.ltst_h), mi = Math.floor((m.ltst_h - h) * 60);
+      set("st-mars", `Sol ${m.sol} · ${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")} LTST`);
+    }).catch(() => set("st-mars", "—"));
+    tick(); setInterval(tick, 30000);
+    api.weather().then((w) => {
+      const s = w.summary;
+      set("st-weather", w.status === "live" && s?.available ? `Sol ${s.sol}: ${s.temp_avg_c ?? "—"} °C` : `${w.status === "fallback" ? "No disponible" : w.status} (${w.status})`, w.status === "live" ? "var(--safe)" : "var(--text-2)");
+    }).catch(() => set("st-weather", "No disponible"));
+    setInterval(() => { document.getElementById("clock").textContent = new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC"; }, 1000);
+  </script>
+</body>
+</html>

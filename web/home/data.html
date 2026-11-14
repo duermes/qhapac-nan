@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Procedencia de datos — Qhapaq Ñan</title>
+  <link rel="stylesheet" href="/static/shared/css/qn.css" />
+  <style>
+    body { overflow: auto; }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 24px 16px 40px; }
+    section { margin-top: 18px; padding: 14px 16px; }
+    h1 { letter-spacing: .1em; font-size: 22px; margin: 18px 0 4px; }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--joint); vertical-align: top; }
+    th { color: var(--text-2); font-weight: 500; }
+    td.mono { word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="btn" href="/home">← Portal</a>
+    <h1>PROCEDENCIA DE DATOS</h1>
+    <p class="muted">Originales NASA, derivados, modelos y escenario sintético. Nada se presenta como observación si no lo es.</p>
+    <section class="panel" id="kickoff"><h2>Originales registrados (manifest.json)</h2><div class="body">Cargando…</div></section>
+    <section class="panel" id="regions"><h2>Regiones derivadas</h2><div class="body"></div></section>
+    <section class="panel" id="layers"><h2>Capas analíticas</h2><div class="body"></div></section>
+    <section class="panel" id="scenario"><h2>Escenario de misión</h2><div class="body"></div></section>
+  </div>
+  <script type="module">
+    import { esc, provBadge } from "/static/shared/js/ui.js";
+    const r = await fetch("/api/data/manifest").then((x) => x.json()).catch(() => null);
+    const set = (id, html) => { document.querySelector(`#${id} .body`).innerHTML = html; };
+    if (!r) { set("kickoff", '<div class="alert-card">Sin conexión con Khipu.</div>'); }
+    else {
+      const ds = r.kickoff_manifest.datasets;
+      set("kickoff", ds.length ? `<table><tr><th>Dataset</th><th>Clase</th><th>Producto / instrumento</th><th>Archivos (SHA-256)</th><th>Cobertura</th></tr>${ds.map((d) => `<tr>
+        <td>${esc(d.id)}<br><span class="dim">${esc(d.source?.provider || "—")} · ${esc(d.source?.retrieved_at || "")}</span></td><td>${provBadge(d.classification)}</td>
+        <td>${esc(d.product_id || "—")}<br><span class="dim">${esc(d.instrument || "—")}</span></td>
+        <td class="mono">${d.files.map((f) => `${esc(f.path)}<br><span class="dim">${esc(f.sha256 || "sin hash")}</span>`).join("<br>")}</td>
+        <td>${esc(d.coverage || "desconocida")}<br><span class="dim">${esc(d.license_or_attribution || "")}</span></td></tr>`).join("")}</table>`
+        : '<div class="empty-state">Ningún original registrado. Coloca los archivos en data/official_kickoff/raw/ y ejecuta scripts/register_kickoff.py.</div>');
+      set("regions", `<table><tr><th>Región</th><th>Clase</th><th>Resolución</th><th>Ventana</th><th>Cobertura válida</th></tr>${r.regions.map((m) => `<tr>
+        <td>${esc(m.name)}<br><span class="dim">${esc(m.key)}${m.parent ? " · sector de " + esc(m.parent) : ""}</span></td><td>${provBadge(m.classification)}</td><td>${esc(m.resolution)}</td>
+        <td class="mono">${m.geometry ? `${m.geometry.lat_min}–${m.geometry.lat_max}°N, ${m.geometry.lon_min}–${m.geometry.lon_max}°E` : m.focus_bbox ? `${m.focus_bbox.lat_min}–${m.focus_bbox.lat_max}°N, ${m.focus_bbox.lon_min}–${m.focus_bbox.lon_max}°E` : "—"}</td>
+        <td>${m.coverage ? (100 * m.coverage.valid_fraction).toFixed(1) + " %" : "hereda del padre"}</td></tr>`).join("")}</table>`);
+      set("layers", `<table><tr><th>Capa</th><th>Clase</th><th>Unidades</th><th>Estado</th></tr>${r.layers.map((l) => `<tr><td>${esc(l.name)}<br><span class="dim">${esc(l.description)}</span></td>
+        <td>${provBadge(l.provenance)}</td><td class="mono">${esc(l.units)}</td><td>${l.available ? "disponible" : `<span style="color:var(--warn)">${esc(l.unavailable_reason)}</span>`}</td></tr>`).join("")}</table>`);
+      set("scenario", `${provBadge(r.scenario.classification)}<p>${esc(r.scenario.label)}</p><p class="muted">${esc(r.scenario.notes)}</p>`);
+    }
+  </script>
+</body>
+</html>

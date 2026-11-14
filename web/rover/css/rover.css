@@ -1,0 +1,89 @@
+/* Chaski layout: topographic map dominant; instruments left; resources right; modes dock; E-stop bottom-right. */
+.stage { position: fixed; inset: 0; background: #0b100d; }
+.map2d, .map3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.map2d { touch-action: none; }
+.small { font-size: 11px; }
+.gold { color: var(--gold); }
+.green { color: var(--safe); }
+.tl { position: fixed; left: 12px; top: 12px; z-index: 20; display: flex; gap: 8px; align-items: stretch; }
+.home-link { width: 40px; padding: 0; }
+.tc { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 20; display: flex; gap: 14px; align-items: center; }
+.compass { width: 190px; height: 26px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.compass-tape { position: absolute; inset: 0; font-size: 10px; color: var(--text-2); }
+.compass-tape span { position: absolute; top: 6px; transform: translateX(-50%); }
+.compass b { position: relative; z-index: 2; font-size: 12px; background: rgba(16,22,18,.9); padding: 0 6px; }
+.nav-dial { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--danger); }
+.nav-dial svg { width: 18px; height: 18px; transition: transform .2s; }
+.goal-meta { position: fixed; left: 50%; top: 56px; transform: translateX(-60%); z-index: 19; padding: 6px 10px; font-size: 10px; line-height: 1.6; }
+.tr { position: fixed; right: 12px; top: 12px; z-index: 20; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.pill { padding: 7px 12px; font-size: 11px; display: flex; gap: 8px; align-items: center; }
+.dot-live { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); display: inline-block; }
+.map-menu { padding: 6px; min-width: 230px; }
+.map-menu label { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 5px 4px; font-size: 12px; }
+.col-left { position: fixed; left: 12px; top: 80px; width: 228px; z-index: 15; display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 110px); overflow: auto; }
+.col-right { position: fixed; right: 12px; top: 128px; width: 212px; z-index: 15; display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 290px); overflow: auto; }
+.card .panel-head { font-size: 12px; padding: 9px 12px; }
+.instruments { display: grid; grid-template-columns: 1fr 1px 1fr; align-items: center; padding: 14px 12px; }
+.instruments .sep { height: 46px; background: var(--joint-strong); }
+.speed { display: flex; flex-direction: column; align-items: center; }
+.speed b { font-size: 34px; color: var(--gold-dim); font-weight: 400; }
+.speed span { font-size: 10px; color: var(--text-2); letter-spacing: .1em; }
+.heading { padding-left: 14px; display: flex; flex-direction: column; }
+.heading b { font-size: 22px; font-weight: 500; }
+.guide-row { display: flex; gap: 10px; align-items: flex-start; }
+.turn { width: 30px; height: 30px; border: 1px solid var(--joint-strong); display: flex; align-items: center; justify-content: center; flex: none; }
+.chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--joint-strong); padding: 2px 6px; font-size: 10px; }
+.nav-ctrls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.btn.big { flex-direction: column; min-height: 64px; font-size: 10px; text-align: center; line-height: 1.25; padding: 6px 4px; }
+.btn.big svg { width: 16px; height: 16px; }
+.dpad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 44px); gap: 6px; justify-content: center; padding: 10px; }
+.dpad [data-dir="up"] { grid-column: 2; grid-row: 1; }
+.dpad [data-dir="left"] { grid-column: 1; grid-row: 2; }
+.dpad [data-dir="stop"] { grid-column: 2; grid-row: 2; color: var(--danger); }
+.dpad [data-dir="right"] { grid-column: 3; grid-row: 2; }
+.dpad [data-dir="down"] { grid-column: 2; grid-row: 3; }
+.dpad .btn { min-height: 44px; } /* glove-friendly targets */
+.dpad .btn.pressed { border-color: var(--gold); color: var(--gold); }
+.res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { border: 1px solid var(--joint); padding: 8px; display: flex; flex-direction: column; gap: 4px; background: rgba(11,16,13,.4); }
+.tile b { font-size: 17px; font-weight: 500; }
+.bar { height: 3px; background: rgba(243,235,220,.1); }
+.bar i { display: block; height: 100%; width: 0; background: var(--gold); }
+.zone { align-items: center; justify-content: center; text-align: center; font-size: 10px; border-color: var(--safe); color: var(--safe); background: var(--safe-bg); }
+.zone b { font-size: 12px; }
+.zone.caution { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+.zone.abort { border-color: var(--danger); color: var(--danger); background: var(--danger-bg); }
+.traction { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.att-row { display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px; }
+.att .bar i { background: var(--safe); }
+.slip { display: flex; flex-direction: column; align-items: center; gap: 4px; border-left: 1px solid var(--joint); padding-left: 10px; }
+.slip b { font-size: 20px; }
+.rover-dock { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 20; }
+.rover-dock .dock-btn { width: 90px; }
+.br { position: fixed; right: 12px; bottom: 10px; z-index: 22; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.actions { display: flex; gap: 10px; }
+.actions .btn { min-height: 46px; min-width: 120px; }
+.estop { min-width: 140px; font-weight: 600; line-height: 1.15; text-align: left; }
+.estop[aria-pressed="true"] { background: var(--danger); color: #fff; border-color: #fff; box-shadow: 0 0 0 2px var(--danger); }
+.rover-foot { padding: 8px 12px; font-size: 11px; min-width: 260px; }
+.bl { position: fixed; left: 12px; bottom: 12px; z-index: 18; display: flex; gap: 8px; align-items: flex-end; }
+.scale { font-size: 10px; padding: 2px 4px; background: rgba(0,0,0,.5); }
+.labels3d .m3d { pointer-events: none; }
+.rover-legend { position: fixed; right: 240px; top: 128px; z-index: 16; width: 200px; padding: 8px 10px; }
+@media (max-width: 860px) { .rover-legend { right: 8px; top: auto; bottom: 230px; } }
+@media (max-width: 860px) {
+  .col-left { top: auto; bottom: 150px; width: 200px; max-height: 40vh; }
+  .col-right { top: 110px; width: 190px; max-height: 36vh; }
+  .goal-meta { top: 52px; transform: translateX(-50%); }
+  .compass { width: 140px; }
+  .actions .btn { min-width: 96px; }
+}
+@media (max-width: 600px) {
+  .brand-sub { display: none; }
+  .col-left { width: 170px; bottom: 140px; max-height: 34vh; } /* all cards stay reachable by scrolling */
+  .col-right { width: 170px; }
+  .rover-dock .dock-btn { width: 70px; }
+  .rover-foot { min-width: 0; max-width: 60vw; }
+  .tc .nav-dial { display: none; }
+}

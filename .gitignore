@@ -1,0 +1,25 @@
+# Entorno y artefactos locales
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+test-results/
+.DS_Store
+
+# Secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Originales NASA: se comparten fuera del control de versiones (MOLA img = 124 MB)
+data/official_kickoff/raw/**
+!data/official_kickoff/raw/**/README.md
+
+# Derivados regenerables (scripts/bootstrap_data.py), caché de API y estado de usuario
+data/processed/generated/
+data/cache/
+data/userstate/

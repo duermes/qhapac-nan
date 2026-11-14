@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ñawi — Qhapaq Ñan</title>
+  <link rel="stylesheet" href="/static/shared/css/qn.css" />
+  <link rel="stylesheet" href="/static/hud/css/hud.css" />
+  <script type="importmap">{ "imports": { "three": "/static/vendor/three/three.module.js", "three/addons/": "/static/vendor/three/addons/" } }</script>
+</head>
+<body class="hud">
+  <div id="scene" class="scene" aria-label="Escena 3D EVA"></div>
+  <div class="visor-mask" aria-hidden="true"></div>
+
+  <!-- top-left identity -->
+  <div class="hud-id"><div class="hud-brand"><b>ÑAWI</b><span>QHAPAQ ÑAN · KHIPU</span></div><span class="eva-pill"><i></i><span id="eva-id">EVA-01</span></span></div>
+
+  <!-- top vitals band -->
+  <div class="vitals" role="group" aria-label="Signos vitales y consumibles">
+    <div class="v" id="v-o2"><span>O₂:</span><b class="mono" id="o2">—</b><small class="mono" id="o2-min"></small></div>
+    <div class="v" id="v-bat"><span>BAT:</span><b class="mono" id="bat">—</b><small class="mono" id="bat-h"></small></div>
+    <div class="v" id="v-hr"><span>FC:</span><b class="mono" id="hr">—</b></div>
+    <div class="v" id="v-st"><span>ESTAMINA:</span><b class="mono" id="stamina">—</b></div>
+    <div class="v" id="v-wb"><span>WALKBACK:</span><b class="mono" id="walkback">—</b><small id="wb-state"></small></div>
+    <div class="v" id="v-smp"><span>MUESTRAS:</span><b class="mono" id="samples">0/16</b></div>
+  </div>
+  <div class="tr-btns">
+    <button id="camera-btn" class="hbtn"><span data-icon="camera"></span>Cámara</button>
+    <button id="help-btn" class="hbtn" aria-expanded="false"><span data-icon="help"></span>Ayuda</button>
+  </div>
+
+  <!-- critical alert (prioritised, never over the reticle) -->
+  <div id="critical" class="critical" role="alert" hidden></div>
+
+  <!-- left: goal + stamina -->
+  <section class="hcard goal" aria-label="Objetivo">
+    <div class="hcard-title"><i class="dot blue"></i>1. OBJETIVO / META</div>
+    <div class="goal-dist mono" id="goal-dist">—</div>
+    <div class="goal-name" id="goal-name">Sin objetivo</div>
+    <div class="mono small">Rumbo: <b id="goal-brg">—</b> &nbsp; ETA: <b id="goal-eta">—</b></div>
+    <div class="mono small">ΔZ: <b id="goal-dz">—</b> <span id="goal-safe" class="ok"></span></div>
+    <div class="goal-actions"><button class="hbtn sm" id="goal-prev" aria-label="Objetivo anterior">◂</button><button class="hbtn sm" id="goal-next" aria-label="Siguiente objetivo">▸</button><button class="hbtn sm" id="goal-route">Ruta Khipu</button></div>
+  </section>
+  <section class="hcard stamina" aria-label="Esfuerzo y estamina">
+    <div class="hcard-title"><span data-icon="sliders"></span>ESFUERZO Y ESTAMINA <b class="mono" id="stamina-pct">—</b></div>
+    <div class="st-bar"><i id="stamina-bar"></i></div>
+    <details id="effort-detail"><summary>Detalle de esfuerzo</summary><div id="effort-body" class="small mono"></div></details>
+  </section>
+
+  <!-- right: field of view + suit -->
+  <section class="hcard fov" aria-label="Elementos en campo visual">
+    <div class="hcard-title"><span data-icon="eye"></span>ELEMENTOS EN CAMPO VISUAL <span id="fov-filter" class="small dim"></span></div>
+    <div id="fov-list" class="fov-list"></div>
+  </section>
+  <section class="hcard suit" aria-label="Estado del traje">
+    <div class="hcard-title"><span data-icon="shield"></span>Estado del traje <span id="alert-count" class="badge cached">0</span></div>
+    <div id="suit-alerts" class="suit-alerts"><div class="empty">Sin avisos activos</div></div>
+    <div class="suit-foot mono" id="traction">TRACCIÓN NOMINAL</div>
+  </section>
+
+  <!-- centre reticle -->
+  <div class="reticle" aria-hidden="true">
+    <div class="cross"></div>
+    <div class="ladder" id="ladder"><div class="rung up"><span>+10°</span></div><div class="rung mid"></div><div class="rung down"><span>-10°</span></div></div>
+    <div class="director" id="director"></div>
+  </div>
+
+  <!-- bottom -->
+  <div id="prompt" class="prompt" hidden role="status"></div>
+  <button id="voice-btn" class="hbtn voice"><span data-icon="radio"></span>Khipu - Voz</button>
+  <section class="hcard relief" aria-label="Relieve local">
+    <div class="hcard-title"><i class="dot orange"></i>2. RELIEVE LOCAL (R=180M)</div>
+    <div class="relief-grid"><div><span class="small">PICO MÁXIMO</span><b class="mono warm" id="peak">—</b><small class="mono" id="peak-dz"></small></div>
+      <div><span class="small">VALLE MÍNIMO</span><b class="mono cold" id="valley">—</b><small class="mono" id="valley-dz"></small></div></div>
+    <div class="small dim" id="relief-txt">—</div>
+  </section>
+  <section class="hcard north" aria-label="Norte marciano">
+    <div class="hcard-title"><i class="dot red"></i>3. NORTE MARCIANO</div>
+    <div class="compass-ring"><div class="needle" id="needle"></div></div>
+    <div class="mono az" id="azimuth">—° AZ</div>
+  </section>
+  <div class="loc mono" id="loc"><div class="small">LOCALIZACIÓN ASTRONAUTA:</div><div id="loc-ll">—</div><div class="small" id="loc-elev">—</div></div>
+
+  <!-- on-screen EVA controls (gloves / touch) -->
+  <div class="eva-controls" aria-label="Controles EVA">
+    <button class="hbtn pad" data-move="fwd" aria-label="Avanzar">▲</button>
+    <button class="hbtn pad" data-move="left" aria-label="Girar izquierda">◀</button>
+    <button class="hbtn pad" data-move="back" aria-label="Retroceder">▼</button>
+    <button class="hbtn pad" data-move="right" aria-label="Girar derecha">▶</button>
+    <button class="hbtn pad act" id="act-btn" aria-label="Interactuar (F/E)">F</button>
+    <button class="hbtn pad sos" id="sos-btn" aria-label="Emergencia EVA">SOS</button>
+  </div>
+
+  <aside id="help" class="help hcard" hidden aria-label="Ayuda contextual">
+    <div class="hcard-title"><span data-icon="help"></span>Ayuda contextual <button class="hbtn sm" id="help-close" aria-label="Cerrar ayuda" style="margin-left:auto">×</button></div>
+    <div id="help-body" class="small"></div>
+  </aside>
+  <a href="/home" class="hbtn home" aria-label="Volver al portal"><span data-icon="home"></span></a>
+  <script type="module" src="/static/hud/js/hud.js"></script>
+</body>
+</html>

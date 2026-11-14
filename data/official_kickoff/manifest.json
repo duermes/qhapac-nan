@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "datasets": [
+    {
+      "id": "mola-megdr-megt44n000hb",
+      "classification": "official_nasa",
+      "mission": "Mars Global Surveyor",
+      "instrument": "MOLA (Mars Orbiter Laser Altimeter)",
+      "product_id": "MEGT44N000HB.IMG",
+      "source": {
+        "url_or_reference": "https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x/meg128/megt44n000hb.img",
+        "retrieved_at": "2026-11-14T09:35:00Z",
+        "provider": "NASA PDS Geosciences Node"
+      },
+      "coverage": "0°N–44°N, 0°E–90°E",
+      "coordinate_reference": "IAU2000 planetocentric, east longitude, simple cylindrical, sphere R=3396 km",
+      "license_or_attribution": "NASA PDS public data; MGS MOLA Science Team (D. E. Smith, GSFC)",
+      "files": [
+        {
+          "path": "data/official_kickoff/raw/mola/megt44n000hb.img",
+          "format": "PDS3 IMAGE MSB_INTEGER 16-bit",
+          "sha256": "14022166079edafc99650f354e5a634e6eb2c2ea544b444c01cd8ee55437df36",
+          "units": "m",
+          "resolution": "128 px/deg (0.463 km/px)",
+          "notes": "5632 lines x 11520 samples; median topography above GMM3 areoid"
+        },
+        {
+          "path": "data/official_kickoff/raw/mola/megt44n000hb.lbl",
+          "format": "PDS3 label (ODL)",
+          "sha256": "bc624a238ba6d71a770a09f959ead96f1c144970fae435b8ca5e26208b42eec5",
+          "units": null,
+          "resolution": null,
+          "notes": "Detached label"
+        }
+      ],
+      "transformations": [
+        "derived window 'syrtis_jezero_nili' in data/processed/generated/regions/ (no resampling)"
+      ],
+      "notes": "Downloaded from an authorised NASA source before kickoff data was provided; not a kickoff file."
+    }
+  ]
+}

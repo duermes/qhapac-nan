@@ -1,0 +1,344 @@
+{
+  "schema_version": "1.0",
+  "classification": "synthetic",
+  "label": "ESCENARIO SINTÉTICO — entidades de misión ficticias para demostración",
+  "notes": "Base, vehículos, astronautas, zonas de exclusión, muestras y POI científicos son ficticios. Los topónimos usan nombres IAU con coordenadas aproximadas (no descargadas del gazetteer USGS en esta sesión).",
+  "assets": [
+    {
+      "id": "BASE_ALFA",
+      "name": "Base Alfa (Hábitat)",
+      "kind": "base",
+      "lat": 18.4447,
+      "lon": 77.4508,
+      "metadata": {
+        "crew": 4,
+        "airlock": true
+      }
+    },
+    {
+      "id": "HAB_MOD_2",
+      "name": "Módulo Hábitat 2",
+      "kind": "habitat",
+      "lat": 18.4489,
+      "lon": 77.4591
+    },
+    {
+      "id": "ANT_RELAY",
+      "name": "Antena de relevo UHF",
+      "kind": "antenna",
+      "lat": 18.452,
+      "lon": 77.4445,
+      "metadata": {
+        "mast_height_m": 8.0,
+        "band": "UHF 401.5 MHz"
+      }
+    },
+    {
+      "id": "ROVER_PR1",
+      "name": "Pressurized Rover PR-01",
+      "kind": "rover",
+      "lat": 18.438,
+      "lon": 77.47,
+      "max_slope_deg": 20,
+      "speed_mps": 2.0,
+      "resources": {
+        "battery_wh": 60000
+      }
+    },
+    {
+      "id": "ROVER_LRV2",
+      "name": "Rover Abierto LRV-02",
+      "kind": "rover",
+      "lat": 18.456,
+      "lon": 77.431,
+      "max_slope_deg": 18,
+      "speed_mps": 3.0,
+      "resources": {
+        "battery_wh": 8000
+      }
+    },
+    {
+      "id": "ROVER_RS3",
+      "name": "Rover Scout RS-03",
+      "kind": "rover",
+      "lat": 18.427,
+      "lon": 77.442,
+      "max_slope_deg": 22,
+      "speed_mps": 0.15,
+      "resources": {
+        "battery_wh": 2500
+      }
+    },
+    {
+      "id": "EVA_01",
+      "name": "Dra. Vance (Geóloga EVA)",
+      "kind": "astronaut",
+      "lat": 18.447,
+      "lon": 77.456,
+      "max_slope_deg": 25,
+      "speed_mps": 0.9,
+      "resources": {
+        "o2_kg": 1.2
+      }
+    },
+    {
+      "id": "EVA_02",
+      "name": "Tte. Chen (Exobiología)",
+      "kind": "astronaut",
+      "lat": 18.4425,
+      "lon": 77.4485,
+      "max_slope_deg": 25,
+      "speed_mps": 0.9,
+      "resources": {
+        "o2_kg": 1.2
+      }
+    },
+    {
+      "id": "MAV_1",
+      "name": "Mars Ascent Vehicle (MAV)",
+      "kind": "landmark",
+      "lat": 18.433,
+      "lon": 77.488,
+      "metadata": {
+        "static": true
+      }
+    },
+    {
+      "id": "MET_STATION",
+      "name": "Estación Meteorológica MEDA-S",
+      "kind": "landmark",
+      "lat": 18.4505,
+      "lon": 77.462
+    }
+  ],
+  "hazards": [
+    {
+      "id": "COSPAR_IVB",
+      "name": "Zona Especial COSPAR Cat. IVb",
+      "kind": "planetary_protection",
+      "lat": 18.53,
+      "lon": 77.42,
+      "radius_m": 2600,
+      "tier": "forbidden"
+    },
+    {
+      "id": "DUNE_TRAP_SEITAH",
+      "name": "Trampa de Dunas Eólicas Séítah",
+      "kind": "dune_trap",
+      "lat": 18.37,
+      "lon": 77.425,
+      "radius_m": 2200,
+      "tier": "forbidden"
+    },
+    {
+      "id": "SCARP_DELTA",
+      "name": "Escarpe del frente deltaico",
+      "kind": "scarp",
+      "lat": 18.495,
+      "lon": 77.39,
+      "radius_m": 900,
+      "tier": "high"
+    }
+  ],
+  "pois": [
+    {
+      "id": "POI_DELTA_FRONT",
+      "name": "Frente Deltaico Jezero — Testigo Lacustre",
+      "category": "science",
+      "kind": "poi",
+      "lat": 18.46,
+      "lon": 77.4,
+      "science_value": 0.95,
+      "influence_m": 3000,
+      "description": "Sedimentos lacustres estratificados; objetivo prioritario de biofirmas."
+    },
+    {
+      "id": "POI_SEITAH_SAMPLING",
+      "name": "Campos de Dunas Séítah — Muestreo de Olivino",
+      "category": "science",
+      "kind": "poi",
+      "lat": 18.4,
+      "lon": 77.45,
+      "science_value": 0.7,
+      "influence_m": 2500,
+      "description": "Roca ígnea rica en olivino bajo cobertura eólica."
+    },
+    {
+      "id": "POI_STROMATOLITE",
+      "name": "Biofirmas Estromatolito (candidato)",
+      "category": "science",
+      "kind": "sample",
+      "lat": 18.476,
+      "lon": 77.425,
+      "science_value": 0.9,
+      "influence_m": 2000,
+      "description": "Carbonatos marginales con texturas laminadas candidatas."
+    },
+    {
+      "id": "POI_BELVA_RIM",
+      "name": "Borde del Cráter Belva",
+      "category": "science",
+      "kind": "poi",
+      "lat": 18.5,
+      "lon": 77.28,
+      "science_value": 0.6,
+      "influence_m": 2500,
+      "description": "Exposición estratigráfica del delta en el borde de impacto."
+    },
+    {
+      "id": "POI_NERETVA_INLET",
+      "name": "Entrada de Neretva Vallis",
+      "category": "science",
+      "kind": "poi",
+      "lat": 18.56,
+      "lon": 77.23,
+      "science_value": 0.65,
+      "influence_m": 3000,
+      "description": "Canal de entrada fluvial del paleolago."
+    },
+    {
+      "id": "POI_MARGIN_CARB",
+      "name": "Carbonatos del Margen Interno",
+      "category": "science",
+      "kind": "poi",
+      "lat": 18.36,
+      "lon": 77.65,
+      "science_value": 0.8,
+      "influence_m": 2500,
+      "description": "Unidad marginal de carbonatos en el interior del cráter."
+    },
+    {
+      "id": "POI_NESYRTIS_OLIV",
+      "name": "NE Syrtis — Megabrecha y Olivino",
+      "category": "science",
+      "kind": "poi",
+      "lat": 17.89,
+      "lon": 77.16,
+      "science_value": 0.75,
+      "influence_m": 4000,
+      "description": "Basamento noachiano con megabrechas."
+    },
+    {
+      "id": "POI_NILI_PHYLLO",
+      "name": "Afloramiento de Filosilicatos — Nili Fossae",
+      "category": "science",
+      "kind": "sample",
+      "lat": 21.6,
+      "lon": 75.4,
+      "science_value": 0.85,
+      "influence_m": 5000,
+      "description": "Arcillas Fe/Mg expuestas en la pared de la fosa."
+    },
+    {
+      "id": "POI_DRILL_TOWER",
+      "name": "Torre de Perforación Geológica",
+      "category": "base",
+      "kind": "landmark",
+      "lat": 18.439,
+      "lon": 77.462,
+      "description": "Infraestructura ficticia del escenario."
+    },
+    {
+      "id": "SAMPLE_01",
+      "name": "Muestra M-01 Basalto",
+      "category": "sample",
+      "kind": "sample",
+      "lat": 18.4485,
+      "lon": 77.453
+    },
+    {
+      "id": "SAMPLE_02",
+      "name": "Muestra M-02 Sulfato",
+      "category": "sample",
+      "kind": "sample",
+      "lat": 18.443,
+      "lon": 77.454
+    },
+    {
+      "id": "SAMPLE_03",
+      "name": "Muestra M-03 Carbonato",
+      "category": "sample",
+      "kind": "sample",
+      "lat": 18.4462,
+      "lon": 77.447
+    }
+  ],
+  "toponyms": [
+    {
+      "name": "Jezero",
+      "type": "crater",
+      "lat": 18.38,
+      "lon": 77.58,
+      "rank": 1,
+      "approx": true
+    },
+    {
+      "name": "Syrtis Major Planum",
+      "type": "planum",
+      "lat": 17.0,
+      "lon": 75.5,
+      "rank": 0,
+      "approx": true
+    },
+    {
+      "name": "Nili Fossae",
+      "type": "fossae",
+      "lat": 21.8,
+      "lon": 76.0,
+      "rank": 0,
+      "approx": true
+    },
+    {
+      "name": "Neretva Vallis",
+      "type": "vallis",
+      "lat": 18.65,
+      "lon": 77.1,
+      "rank": 2,
+      "approx": true
+    },
+    {
+      "name": "Sava Vallis",
+      "type": "vallis",
+      "lat": 18.85,
+      "lon": 77.45,
+      "rank": 2,
+      "approx": true
+    },
+    {
+      "name": "Cráter Belva",
+      "type": "crater",
+      "lat": 18.52,
+      "lon": 77.26,
+      "rank": 3,
+      "approx": true
+    },
+    {
+      "name": "Séítah",
+      "type": "region",
+      "lat": 18.4,
+      "lon": 77.43,
+      "rank": 3,
+      "approx": true
+    },
+    {
+      "name": "Hargraves",
+      "type": "crater",
+      "lat": 20.7,
+      "lon": 75.8,
+      "rank": 1,
+      "approx": true
+    },
+    {
+      "name": "NE Syrtis",
+      "type": "region",
+      "lat": 17.85,
+      "lon": 77.15,
+      "rank": 1,
+      "approx": true
+    }
+  ],
+  "eva_policy": {
+    "walkback_limit_m": 2000,
+    "reserve_fraction": 0.25
+  }
+}

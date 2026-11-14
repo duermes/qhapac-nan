@@ -1,0 +1,111 @@
+/* Ñawi — EVA helmet HUD. Central view kept clear; vitals band on top. */
+body.hud { background: #1a0d08; --hud-line: rgba(140, 200, 230, 0.35); --hud-bg: rgba(10, 14, 16, 0.55); --hud-cyan: #6fd3ff; }
+.scene { position: fixed; inset: 0; }
+.scene canvas { display: block; }
+.visor-mask { position: fixed; inset: 0; pointer-events: none; z-index: 5;
+  box-shadow: inset 0 0 120px 40px rgba(0,0,0,.55); border: 14px solid rgba(0,0,0,.25); border-radius: 26px; }
+.small { font-size: 10px; }
+.dim { color: var(--text-3); }
+.hcard { position: fixed; z-index: 10; background: var(--hud-bg); border: 1px solid var(--hud-line); padding: 8px 10px; backdrop-filter: blur(4px); color: var(--text-1); }
+.hcard-title { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; color: var(--hud-cyan); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+.hcard-title svg { width: 13px; height: 13px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot.blue { background: #3d8bff; } .dot.orange { background: #f0a24b; } .dot.red { background: var(--danger); }
+.hbtn { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 12px; background: var(--hud-bg); border: 1px solid var(--hud-line); color: var(--text-1); cursor: pointer; font-family: var(--font-ui); }
+.hbtn:hover { border-color: var(--hud-cyan); }
+.hbtn svg { width: 14px; height: 14px; }
+.hbtn.sm { min-height: 22px; padding: 1px 8px; font-size: 11px; }
+.hud-id { position: fixed; left: 18px; top: 14px; z-index: 10; display: flex; align-items: center; gap: 10px; }
+.hud-brand { display: flex; flex-direction: column; padding: 4px 8px; background: var(--hud-bg); border: 1px solid var(--hud-line); }
+.hud-brand b { letter-spacing: .14em; color: var(--text-2); font-size: 13px; }
+.hud-brand span { font-size: 8px; color: var(--text-3); letter-spacing: .12em; }
+.eva-pill { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--hud-cyan); }
+.eva-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--safe); }
+.vitals { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 340px); }
+.vitals .v { display: flex; align-items: baseline; gap: 4px; padding: 5px 7px; white-space: nowrap; background: var(--hud-bg); border: 1px solid var(--hud-line); font-size: 10px; color: var(--text-2); font-family: var(--font-mono); }
+.vitals .v b { color: var(--text-1); font-size: 13px; }
+.vitals .v small { color: var(--text-3); font-size: 9px; }
+.vitals .v.warn { border-color: var(--warn); } .vitals .v.warn b { color: var(--warn); }
+.vitals .v.crit { border-color: var(--danger); background: rgba(80, 16, 12, .6); } .vitals .v.crit b { color: #ffb4ad; }
+#wb-state.ok { color: var(--safe); } #wb-state.bad { color: var(--danger); }
+.tr-btns { position: fixed; right: 18px; top: 14px; z-index: 10; display: flex; gap: 8px; }
+.critical { position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 12; padding: 6px 14px; border: 1px solid var(--danger); background: rgba(80, 16, 12, .82); color: #ffd6d2; font-weight: 600; font-size: 12px; max-width: 60vw; text-align: center; }
+.critical::before { content: "⚠ "; }
+.goal { left: 18px; top: 58px; width: 196px; }
+.goal-dist { font-size: 24px; font-weight: 600; }
+.goal-name { font-size: 11px; color: var(--text-2); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goal .ok { color: var(--safe); } .goal .bad { color: var(--danger); }
+.goal-actions { display: flex; gap: 4px; margin-top: 6px; }
+.stamina { left: 18px; top: 196px; width: 196px; }
+.st-bar { height: 6px; background: rgba(255,255,255,.08); }
+.st-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #3fbf7f, #b4d94a); }
+.stamina details summary { font-size: 10px; padding: 4px 0 0; }
+.fov { right: 18px; top: 58px; width: 228px; max-height: 270px; overflow: auto; }
+.fov-list { display: flex; flex-direction: column; gap: 3px; }
+.fov-item { display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; align-items: center; font-size: 11px; font-family: var(--font-mono); background: none; border: 0; color: inherit; cursor: pointer; text-align: left; padding: 2px 0; }
+.fov-item svg { width: 13px; height: 13px; }
+.fov-item .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fov-item .d { color: var(--hud-cyan); }
+.fov-item.active .n { color: var(--gold); }
+.suit { right: 18px; top: 340px; width: 228px; }
+.suit-alerts { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+.suit-alerts .empty { color: var(--text-2); }
+.suit-alerts .a { padding: 3px 6px; border-left: 3px solid; }
+.suit-alerts .a.critical { border-color: var(--danger); color: #ffb4ad; background: rgba(224,83,74,.12); }
+.suit-alerts .a.warning { border-color: var(--warn); color: #ffd79a; }
+.suit-alerts .a.info { border-color: var(--info); color: var(--text-2); }
+.suit-foot { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--hud-line); font-size: 10px; font-weight: 600; }
+.reticle { position: fixed; left: 50%; top: 50%; width: 96px; height: 96px; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; border: 1px dashed rgba(200, 220, 240, .35); border-radius: 50%; }
+.reticle .cross::before, .reticle .cross::after { content: ""; position: absolute; background: rgba(240,245,250,.9); }
+.reticle .cross::before { left: 50%; top: 38%; width: 1.5px; height: 24%; transform: translateX(-50%); }
+.reticle .cross::after { top: 50%; left: 38%; height: 1.5px; width: 24%; transform: translateY(-50%); }
+.ladder { position: absolute; inset: 0; }
+.rung { position: absolute; left: 22%; width: 56%; height: 0; border-top: 1px solid rgba(200,220,240,.6); }
+.rung span { position: absolute; right: -30px; top: -7px; font-size: 9px; font-family: var(--font-mono); color: var(--hud-cyan); }
+.rung.up { top: 28%; } .rung.mid { top: 50%; border-top-width: 2px; border-color: var(--hud-cyan); width: 30%; left: 35%; } .rung.down { top: 72%; }
+.director { position: absolute; top: -18px; left: 50%; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid var(--gold); transform-origin: 50% 66px; }
+.prompt { position: fixed; bottom: 128px; left: 50%; transform: translateX(-50%); z-index: 10; padding: 10px 22px; background: var(--hud-bg); border: 1px solid var(--hud-cyan); font-size: 12px; font-weight: 600; }
+.voice { position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%); z-index: 10; min-height: 40px; padding: 6px 22px; border-color: var(--hud-cyan); }
+.relief { left: 18px; bottom: 64px; width: 210px; }
+.relief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.relief-grid div { display: flex; flex-direction: column; }
+.relief-grid b { font-size: 16px; }
+.warm { color: #f0a24b; } .cold { color: var(--hud-cyan); }
+.north { right: 18px; bottom: 64px; width: 150px; text-align: center; }
+.compass-ring { width: 56px; height: 56px; margin: 0 auto; border-radius: 50%; border: 1px solid var(--hud-line); position: relative; }
+.needle { position: absolute; left: 50%; top: 6px; width: 2px; height: 22px; background: var(--danger); transform-origin: 50% 22px; }
+.needle::after { content: "N"; position: absolute; top: -12px; left: -3px; font-size: 9px; color: var(--danger); font-family: var(--font-mono); }
+.az { color: var(--hud-cyan); font-size: 12px; margin-top: 4px; }
+.loc { position: fixed; left: 18px; bottom: 12px; z-index: 10; font-size: 11px; color: var(--text-2); line-height: 1.35; text-shadow: 0 1px 2px #000; }
+.eva-controls { position: fixed; right: 186px; bottom: 64px; z-index: 10; display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(2, 40px); gap: 4px; }
+.eva-controls .pad { justify-content: center; padding: 0; min-height: 40px; }
+.eva-controls [data-move="fwd"] { grid-column: 2; grid-row: 1; }
+.eva-controls [data-move="left"] { grid-column: 1; grid-row: 2; }
+.eva-controls [data-move="back"] { grid-column: 2; grid-row: 2; }
+.eva-controls [data-move="right"] { grid-column: 3; grid-row: 2; }
+.eva-controls .act { grid-column: 1; grid-row: 1; color: var(--hud-cyan); }
+.eva-controls .sos { grid-column: 3; grid-row: 1; color: var(--danger); border-color: var(--danger); font-size: 10px; }
+.eva-controls .pressed { border-color: var(--gold); color: var(--gold); }
+.help { left: 230px; top: 58px; width: 280px; max-height: 50vh; overflow: auto; z-index: 14; }
+.home { position: fixed; right: 18px; bottom: 12px; z-index: 10; min-height: 28px; padding: 2px 8px; }
+.poi-label { position: absolute; transform: translate(-50%, -100%); pointer-events: none; z-index: 6; display: flex; flex-direction: column; align-items: center; }
+.poi-label .ring { width: 26px; height: 26px; border-radius: 50%; border: 2px solid; display: flex; align-items: center; justify-content: center; background: rgba(10,14,16,.6); }
+.poi-label .ring svg { width: 13px; height: 13px; }
+.poi-label .tag { font-size: 10px; font-family: var(--font-mono); background: rgba(10,14,16,.65); padding: 1px 4px; margin-top: 2px; white-space: nowrap; }
+@media (max-width: 900px) {
+  .vitals { max-width: calc(100vw - 24px); top: 52px; }
+  .vitals .v { padding: 3px 6px; } .vitals .v b { font-size: 11px; }
+  .goal { top: 130px; width: 160px; } .stamina { top: 262px; width: 160px; }
+  .fov { top: 130px; width: 180px; max-height: 150px; } .suit { top: 296px; width: 180px; }
+  .relief { width: 170px; bottom: 110px; } .north { width: 110px; bottom: 110px; }
+  .eva-controls { right: 50%; transform: translateX(50%); bottom: 100px; }
+  .voice { bottom: 50px; }
+  .help { left: 12px; right: 12px; width: auto; top: 120px; }
+}
+@media (max-width: 600px) {
+  .hud-brand span { display: none; }
+  .goal, .stamina, .fov, .suit, .relief, .north { transform: scale(.86); transform-origin: top left; }
+  .fov, .suit { transform-origin: top right; }
+  .north, .suit { right: 8px; } .goal, .stamina, .relief { left: 8px; }
+  .relief, .north { transform-origin: bottom left; } .north { transform-origin: bottom right; }
+}
