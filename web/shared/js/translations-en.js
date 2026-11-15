@@ -12,7 +12,7 @@ export const english = {
   "Acerca de la misión": "About the mission",
   "Misión": "Mission",
   "Recorrido horizontal de los Andes a Marte": "Horizontal journey from the Andes to Mars",
-  "Un sendero de piedra atraviesa las colinas andinas bajo un cielo azul y continúa hasta el terreno rojo de Marte, pasando por el Intiwatana, un chaski y un guerrero de bronce.": "A stone trail crosses the Andean hills under a blue sky and continues to the red terrain of Mars, passing the Intiwatana, a chaski messenger and a bronze warrior.",
+  "Un sendero de piedra oscura recorre los montes andinos junto al Intiwatana y un chaski; un rastro de luz dorada lo conecta con los cráteres rocosos de Marte y un guerrero de bronce.": "A dark stone trail runs through the Andes past the Intiwatana and a chaski messenger. A golden trail of light connects it to the rocky craters of Mars and a bronze warrior.",
   "Intiwatana: abrir Hatun Wasi, consola de misión": "Intiwatana: open Hatun Wasi, the mission console",
   "Chaski: abrir el monitor del rover": "Chaski: open the rover monitor",
   "Ñawi: acercarse a los ojos del guerrero": "Ñawi: approach the warrior’s eyes",
