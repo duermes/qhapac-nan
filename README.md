@@ -44,6 +44,12 @@ node --test tests/eva_comfort.test.mjs tests/home_journey.test.mjs
 
 Para el recorrido de navegador inicia el servidor de pruebas en el puerto 8765 con un directorio `QN_STATE_DIR` aislado. El recorrido utiliza ese servidor para guardar travesías y contingencias de prueba.
 
+## Integración y despliegue continuo
+
+[GitHub Actions](https://github.com/duermes/qhapac-nan/actions/workflows/azure.yml) ejecuta las pruebas de Python y JavaScript en los pull requests hacia `main`. Cada push o merge a `main` vuelve a ejecutar las pruebas. Si pasan, publica el paquete en [Azure App Service](https://qhapac-nan-jezero.azurewebsites.net/home) y verifica el portal y el terreno.
+
+Los colaboradores pueden enviar sus cambios en una rama y abrir un pull request. El despliegue usa una identidad federada de Azure para `main`. Las claves de NASA y Gemini se administran en Azure. El flujo verifica y procesa MOLA antes de empaquetar el terreno con la app.
+
 ## Estructura
 
 | Ruta | Contenido |
