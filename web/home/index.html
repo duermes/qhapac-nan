@@ -3,112 +3,94 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Qhapaq Ñan — Portal</title>
+  <meta name="theme-color" content="#101612" />
+  <meta name="description" content="Un camino desde los Andes hasta Marte. Descubre Hatun Wasi, Chaski y Ñawi: tres formas de explorar con Qhapaq Ñan." />
+  <title>Qhapaq Ñan — El recorrido</title>
+  <link rel="preload" as="image" href="/static/home/assets/andino-mars-panorama.png" fetchpriority="high" />
+  <link rel="preload" as="image" href="/static/home/assets/nawi-eyes.png" />
   <link rel="stylesheet" href="/static/shared/css/qn.css" />
-  <style>
-    body { overflow: auto; background:
-      radial-gradient(1200px 600px at 75% -10%, rgba(185,111,73,.18), transparent 60%),
-      repeating-linear-gradient(0deg, rgba(223,189,128,.035) 0 1px, transparent 1px 64px),
-      repeating-linear-gradient(90deg, rgba(223,189,128,.035) 0 1px, transparent 1px 96px), var(--basalt-1); }
-    .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 16px 40px; }
-    header.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-    .hero { margin: 40px 0 26px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: end; }
-    .hero h1 { font-size: clamp(30px, 5vw, 52px); letter-spacing: .12em; margin: 0; font-weight: 700; }
-    .hero h1 span { color: var(--copper); }
-    .hero p { color: var(--text-2); font-size: 15px; line-height: 1.6; max-width: 60ch; }
-    .steps { display: flex; gap: 0; margin: 14px 0 0; }
-    .steps i { display: block; width: 46px; height: 8px; border: 1px solid var(--copper); border-right: 0; }
-    .steps i:nth-child(2) { margin-top: -8px; } .steps i:nth-child(3) { margin-top: -16px; } .steps i:last-child { border-right: 1px solid var(--copper); }
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    .card { display: flex; flex-direction: column; gap: 10px; padding: 18px; text-decoration: none; color: inherit; min-height: 230px; transition: border-color .15s, transform .15s; }
-    .card:hover, .card:focus-visible { border-color: var(--gold); transform: translateY(-2px); }
-    .card h2 { margin: 0; font-size: 20px; letter-spacing: .1em; }
-    .card .role { color: var(--gold); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
-    .card p { color: var(--text-2); margin: 0; line-height: 1.5; flex: 1; }
-    .card .go { color: var(--gold); display: flex; align-items: center; gap: 6px; font-weight: 600; }
-    .card svg.big { width: 34px; height: 34px; color: var(--copper); }
-    .status { margin-top: 22px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-    .status .panel { padding: 12px 14px; }
-    .status b { display: block; font-family: var(--font-mono); font-size: 15px; margin-top: 4px; }
-    .khipu { margin-top: 22px; padding: 16px 18px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-    footer { margin-top: 28px; color: var(--text-3); font-size: 11px; line-height: 1.6; }
-    @media (max-width: 860px) { .hero, .grid { grid-template-columns: 1fr; } .status { grid-template-columns: 1fr 1fr; } }
-  </style>
+  <link rel="stylesheet" href="/static/home/css/home.css" />
+  <link rel="stylesheet" href="/static/shared/css/product-loading.css" />
+  <script src="/static/shared/js/entry-transition.js"></script>
+  <script type="module" src="/static/home/js/home.js"></script>
 </head>
-<body>
-  <div class="wrap">
-    <header class="top">
-      <div id="brand"></div>
-      <div class="muted mono" id="clock" aria-live="off"></div>
-    </header>
-    <section class="hero">
-      <div>
-        <div class="kicker">Planificación y guía de navegación de superficie marciana</div>
-        <h1>QHAPAQ <span>ÑAN</span></h1>
-        <div class="steps" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <p>Explora el terreno, evalúa riesgos, planifica travesías y conserva un margen de retorno seguro. <strong>Khipu</strong>, el núcleo analítico compartido, alimenta las tres interfaces operativas con el mismo modelo de misión.</p>
-      </div>
-      <p class="muted" style="font-size:12px">Apoyo de decisión dentro de los datos, umbrales y supuestos declarados — no certifica seguridad operacional. Prioridad: la vida antes que la ciencia.</p>
-    </section>
-    <nav class="grid" aria-label="Interfaces operativas">
-      <a class="card panel cut" href="/console" id="go-console">
-        <span data-icon="map" class="ic"></span>
-        <div class="role">Científicos · planificadores</div>
-        <h2>HATUN WASI</h2>
-        <p>Consola de misión: mapa 2D/3D MOLA, capas analíticas, planificación multicriterio, travesías, métricas y punto de no retorno.</p>
-        <span class="go">Abrir consola <span data-icon="arrowright"></span></span>
-      </a>
-      <a class="card panel cut" href="/rover" id="go-rover">
-        <span data-icon="truck" class="ic"></span>
-        <div class="role">Operadores de rover</div>
-        <h2>CHASKI</h2>
-        <p>Monitor táctico del rover: mapa topográfico, guía de ruta, piloto automático, recursos, enlace, tracción y parada de emergencia.</p>
-        <span class="go">Abrir monitor <span data-icon="arrowright"></span></span>
-      </a>
-      <a class="card panel cut" href="/hud" id="go-hud">
-        <span data-icon="person" class="ic"></span>
-        <div class="role">Astronautas en EVA</div>
-        <h2>ÑAWI</h2>
-        <p>Visor de supervivencia EVA: escena 3D, O₂, batería, FC, estamina, walkback, objetivo, alertas priorizadas y esclusa.</p>
-        <span class="go">Abrir visor <span data-icon="arrowright"></span></span>
-      </a>
+<body class="home-journey" data-stage="0">
+  <a class="skip-link" href="#journey-navigation">Elegir una interfaz</a>
+  <header class="journey-header">
+    <a class="journey-brand" href="/home" aria-label="Qhapaq Ñan, volver al inicio del recorrido">
+      <span>QHAPAQ ÑAN<small>DE LOS ANDES A MARTE</small></span>
+    </a>
+    <nav class="header-products" id="journey-navigation" aria-label="Puntos del recorrido">
+      <button class="waypoint is-active" data-stop="0" aria-current="step" aria-label="Ir a Intiwatana, Hatun Wasi">Hatun Wasi</button>
+      <button class="waypoint" data-stop="1" aria-label="Ir a Chaski, monitor del rover">Chaski</button>
+      <button class="waypoint" data-stop="2" aria-label="Ir a Ñawi, guerrero y visor EVA">Ñawi</button>
     </nav>
-    <section class="status" aria-label="Estado de Khipu">
-      <div class="panel"><span class="kicker">Servicio</span><b id="st-health">…</b></div>
-      <div class="panel"><span class="kicker">Topografía</span><b id="st-data">…</b></div>
-      <div class="panel"><span class="kicker">Hora marciana (Jezero)</span><b id="st-mars">…</b></div>
-      <div class="panel"><span class="kicker">Clima NASA</span><b id="st-weather">…</b></div>
-    </section>
-    <section class="khipu panel">
-      <span data-icon="radio"></span>
-      <div style="flex:1;min-width:220px"><strong>Khipu</strong> — copiloto local por reglas. Funciona sin conexión a servicios de IA; la voz usa el navegador si está disponible.</div>
-      <a class="btn" href="/static/home/data.html">Procedencia de datos</a>
-    </section>
-    <footer>
-      Topografía: MGS MOLA MEGDR MEGT44N000HB (NASA PDS Geosciences). Entidades de misión, zonas de exclusión y muestras: escenario sintético rotulado.
-      La inspiración andina (piedra, caminos, escalones, cobre y oro) es una interpretación visual del equipo, no una reconstrucción histórica.
-    </footer>
-  </div>
-  <script type="module">
-    import { icon, brandBlock } from "/static/shared/js/icons.js";
-    import { api } from "/static/shared/js/api.js";
-    document.getElementById("brand").innerHTML = brandBlock("Portal · Núcleo Khipu");
-    document.querySelectorAll("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon, el.classList.contains("ic") ? "big" : "icon"); });
-    const set = (id, t, cls) => { const e = document.getElementById(id); e.textContent = t; if (cls) e.style.color = cls; };
-    api.health().then((h) => {
-      set("st-health", h.status === "ok" ? "Operativo" : h.status, "var(--safe)");
-      set("st-data", h.data.macro_available ? "MOLA cargado" : "Sin datos (modo vacío)", h.data.macro_available ? "var(--safe)" : "var(--warn)");
-    }).catch(() => { set("st-health", "Sin conexión", "var(--danger)"); set("st-data", "—"); });
-    const tick = () => api.marsTime(18.44, 77.45).then((m) => {
-      const h = Math.floor(m.ltst_h), mi = Math.floor((m.ltst_h - h) * 60);
-      set("st-mars", `Sol ${m.sol} · ${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")} LTST`);
-    }).catch(() => set("st-mars", "—"));
-    tick(); setInterval(tick, 30000);
-    api.weather().then((w) => {
-      const s = w.summary;
-      set("st-weather", w.status === "live" && s?.available ? `Sol ${s.sol}: ${s.temp_avg_c ?? "—"} °C` : `${w.status === "fallback" ? "No disponible" : w.status} (${w.status})`, w.status === "live" ? "var(--safe)" : "var(--text-2)");
-    }).catch(() => set("st-weather", "No disponible"));
-    setInterval(() => { document.getElementById("clock").textContent = new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC"; }, 1000);
-  </script>
+    <div class="header-actions">
+      <button class="sound-toggle" id="sound-toggle" aria-pressed="true" aria-label="Desactivar efectos de sonido" title="Desactivar efectos de sonido">Sonido: sí</button>
+      <button class="mission-info" id="mission-info" aria-label="Acerca de la misión" title="Acerca de la misión">Misión</button>
+    </div>
+  </header>
+
+  <main class="journey" id="journey" aria-label="Recorrido horizontal de los Andes a Marte">
+    <div class="journey-distance" aria-hidden="true"></div>
+    <div class="journey-viewport" id="journey-viewport">
+      <div class="world-camera" id="world-camera">
+        <div class="world" id="world">
+          <img class="world-art" id="world-art" src="/static/home/assets/andino-mars-panorama.png" width="2172" height="724" alt="Un sendero de piedra atraviesa las colinas andinas bajo un cielo azul y continúa hasta el terreno rojo de Marte, pasando por el Intiwatana, un chaski y un guerrero de bronce." fetchpriority="high" decoding="async" />
+          <a class="world-target target-intiwatana" href="/console" data-enter="console" data-station="0" aria-label="Intiwatana: abrir Hatun Wasi, consola de misión"><span class="target-point"></span></a>
+          <a class="world-target target-chaski" href="/rover" data-enter="rover" data-station="1" aria-label="Chaski: abrir el monitor del rover" tabindex="-1"><span class="target-point"></span></a>
+          <button class="world-target target-warrior" id="warrior-target" data-station="2" aria-label="Ñawi: acercarse a los ojos del guerrero" tabindex="-1"><span class="target-point"></span></button>
+        </div>
+      </div>
+      <div class="landscape-shade" aria-hidden="true"></div>
+      <div class="eyes-scene" id="eyes-scene" aria-hidden="true">
+        <div class="eyes-camera">
+          <img id="eyes-art" src="/static/home/assets/nawi-eyes.png" width="1672" height="941" alt="Los ojos del guerrero de bronce reflejan el paisaje de Marte." decoding="async" />
+          <a class="eye-entry" id="go-hud" href="/hud" data-enter="hud" tabindex="-1" aria-label="Seleccionar la mirada de Ñawi y entrar al visor EVA" aria-hidden="true"><span class="eye-entry-label stone-button">Entrar al visor</span></a>
+        </div>
+      </div>
+
+      <section class="station-copy" id="copy-intiwatana" data-copy="0" aria-label="Hatun Wasi">
+        <span class="product-label">INTIWATANA</span>
+        <h1>HATUN WASI</h1>
+        <p>Tu centro de misión. Lee el terreno y prepara una ruta con los recursos necesarios para volver.</p>
+        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video de Hatun Wasi"></div>
+        <a class="station-enter stone-button" id="go-console" href="/console" data-enter="console">Entrar a Hatun Wasi</a>
+      </section>
+      <section class="station-copy" id="copy-chaski" data-copy="1" aria-label="Chaski" aria-hidden="true" inert>
+        <span class="product-label">EXPLORACIÓN MÓVIL</span>
+        <h2>CHASKI</h2>
+        <p>Explora con el rover. Revisa su estado, sigue su recorrido y reconoce el terreno antes de avanzar.</p>
+        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video de Chaski"></div>
+        <a class="station-enter stone-button" id="go-rover" href="/rover" data-enter="rover" tabindex="-1">Explorar con Chaski</a>
+      </section>
+      <section class="station-copy nawi-copy" id="copy-warrior" data-copy="2" aria-label="Ñawi, el guerrero" aria-hidden="true" inert>
+        <span class="product-label">ASISTENCIA EVA</span>
+        <h2>ÑAWI</h2>
+        <p>La misión desde tus ojos. Orienta cada paso, vigila tu traje y recoge muestras durante la travesía.</p>
+        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video de Ñawi"></div>
+        <button class="station-enter stone-button" id="approach-eyes" tabindex="-1">Acércate a sus ojos</button>
+      </section>
+      <section class="station-copy nawi-copy eye-copy" id="copy-eyes" data-copy="3" aria-label="Ñawi, visor EVA" aria-hidden="true" inert>
+        <span class="product-label">VISOR DE EXPLORACIÓN</span>
+        <h2>ÑAWI</h2>
+        <p>El camino continúa en primera persona. Selecciona el ojo iluminado para entrar al visor.</p>
+        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video del visor Ñawi"></div>
+      </section>
+
+      <p class="sr-only" id="journey-announcement" aria-live="polite">Intiwatana. Hatun Wasi, consola de misión.</p>
+    </div>
+  </main>
+
+  <dialog class="mission-dialog" id="mission-dialog" aria-labelledby="mission-title">
+    <button class="dialog-close" id="mission-close" aria-label="Cerrar información">×</button>
+    <h2 id="mission-title">Un camino compartido.</h2>
+    <p>Hatun Wasi planifica, Chaski explora y Ñawi acompaña la travesía EVA. Las tres interfaces comparten el núcleo Khipu.</p>
+    <div class="mission-status"><span id="st-health">Consultando Khipu…</span><span id="st-data"></span></div>
+    <p class="mission-note">El recorrido es una interpretación visual de inspiración andina. La aplicación utiliza topografía MOLA y entidades de misión sintéticas. Sus resultados son apoyo de decisión dentro de los datos y supuestos declarados.</p>
+    <a href="/static/home/data.html">Procedencia de datos</a>
+  </dialog>
+
+  <noscript><div class="noscript-navigation"><p>Qhapaq Ñan</p><a href="/console">Hatun Wasi</a><a href="/rover">Chaski</a><a href="/hud">Ñawi</a></div></noscript>
 </body>
 </html>

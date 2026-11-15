@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" fill="none">
+  <style>
+    .runner { animation: stride .65s ease-in-out infinite; transform-origin: 120px 80px; }
+    .front { animation: swing .65s ease-in-out infinite; }
+    .back { animation: swing .65s ease-in-out -.325s infinite; }
+    .knee-front { animation: bend .65s ease-in-out infinite; }
+    .knee-back { animation: bend .65s ease-in-out -.325s infinite; }
+    .cape { animation: cloth .65s ease-in-out infinite; transform-origin: 110px 48px; }
+    .trail { stroke-dasharray: 15 12 3 12; animation: trail .65s linear infinite; }
+    @keyframes swing { 0%,100% { transform: rotate(-35deg); } 50% { transform: rotate(38deg); } }
+    @keyframes bend { 0%,100% { transform: rotate(20deg); } 50% { transform: rotate(85deg); } }
+    @keyframes stride { 0%,50%,100% { transform: translateY(0) rotate(4deg); } 25%,75% { transform: translateY(-4px) rotate(4deg); } }
+    @keyframes cloth { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(5deg); } }
+    @keyframes trail { to { stroke-dashoffset: 42; } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+  <ellipse cx="118" cy="140" rx="44" ry="3" fill="#dfbd80" opacity=".12"/>
+  <path class="trail" d="M30 146H210" stroke="#b96f49" stroke-width="1.5" opacity=".65"/>
+  <g class="runner">
+    <path class="cape" d="M111 48 76 66l-18-4 23-14 28-5Z" fill="#b96f49"/>
+    <g transform="translate(111 88)"><g class="back">
+      <path d="M0 0-4 25" stroke="#a76c48" stroke-width="9" stroke-linecap="round"/>
+      <g transform="translate(-4 25)"><g class="knee-back"><path d="M0 0 3 24 13 26" stroke="#a76c48" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="m2 23 12 3" stroke="#473a30" stroke-width="5" stroke-linecap="round"/></g></g>
+    </g></g>
+    <g transform="translate(118 52)"><g class="front"><path d="M0 0-6 19l14 12" stroke="#ab714d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></g></g>
+    <path d="m106 47 22 4-3 21 5 22-32-2 7-25Z" fill="#ead7aa"/>
+    <path d="m103 70 23 3-1 7-23-3Z" fill="#ad6644"/>
+    <path d="m109 71 4 7 4-6 4 8" stroke="#dfbd80" stroke-width="1.5"/>
+    <path d="m125 48-21 38" stroke="#8e5437" stroke-width="4"/>
+    <path d="m102 76-10 2-3 17 13 3 6-16Z" fill="#9d6545" stroke="#c89460" stroke-width="1.5"/>
+    <g transform="translate(116 89)"><g class="front">
+      <path d="M0 0-4 25" stroke="#ca9566" stroke-width="9" stroke-linecap="round"/>
+      <g transform="translate(-4 25)"><g class="knee-front"><path d="M0 0 3 24 13 26" stroke="#ca9566" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="m2 23 12 3" stroke="#584332" stroke-width="5" stroke-linecap="round"/></g></g>
+    </g></g>
+    <path d="m116 46 2-9 11 2-2 11" fill="#ca9566"/>
+    <path d="M113 19q16-8 23 7l-2 13-8 6-12-8Z" fill="#ca9566"/>
+    <path d="M113 22q0-11 12-10 13 1 12 16l-9-7-7 5-3 17-10 2Z" fill="#3a3028"/>
+    <path d="m113 22 22 3" stroke="#dfbd80" stroke-width="4"/>
+    <path d="m119 16-3-13q10 0 9 14" fill="#b96f49"/>
+    <path d="m127 18 5-14q6 5-1 17" fill="#dfbd80"/>
+    <path d="m133 31 6 4-6 2" fill="#ca9566"/>
+    <g transform="translate(112 54)"><g class="back"><path d="M0 0-5 19l15 12" stroke="#ca9566" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></g></g>
+  </g>
+</svg>
