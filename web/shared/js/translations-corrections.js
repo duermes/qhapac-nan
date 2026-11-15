@@ -1,6 +1,10 @@
 // Shared labels and dynamic vocabulary: DOM, canvas maps, forms and API messages.
 export const correctionEnglish = {
   "Travesía inviable": "Traverse not viable",
+  "Parada de emergencia": "Emergency stop",
+  "Tormenta de polvo": "Dust storm", "Pérdida de enlace": "Communications blackout", "Polvo": "Dust",
+  "Dra. Sato (Astrobiología)": "Dr. Sato (Astrobiology)",
+  "ayuda. Pulsa K o el botón de voz para dar una orden.": "for help. Press K or the voice button to give a command.",
   "Búsqueda no concluyente": "Search inconclusive",
   "Travesía calculada": "Traverse calculated",
 
@@ -251,6 +255,9 @@ export const correctionEnglish = {
 };
 
 export const correctionPatterns = [
+  [/^Travesía (\d+)$/, "Traverse $1"],
+  [/^Travesía (\d+) creada$/, "Traverse $1 created"],
+  [/^Travesía (\d+) eliminada$/, "Traverse $1 deleted"],
   [/^Informes iniciales de Perseverance · volumen (\d+)$/, "Perseverance initial reports · volume $1"],
   [/^Biofirma Fósil Estromatolito #(\d+)$/, "Fossil Stromatolite Biosignature #$1"],
   [/^Muestra (M-[\d]+) (.+)$/, "Sample $1 $2"],

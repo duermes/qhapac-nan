@@ -1,5 +1,6 @@
 // Traverse rack: add / toggle / rename inline / delete — homogeneous for every card.
 import { fmt } from "/static/shared/js/geo.js";
+import { translate } from "/static/shared/js/language.js";
 import { icon } from "/static/shared/js/icons.js";
 import { $, esc, toast } from "/static/shared/js/ui.js";
 import { persist, refreshScene } from "./app.js";
@@ -28,6 +29,7 @@ export function initTraverses(c) {
   });
   ctx.on("session", render);
   ctx.on("traverses", render);
+  document.addEventListener("qn:language", render);
 
 }
 
@@ -94,14 +96,15 @@ export function render() {
   const n = s.traverses.length;
   $("#traverse-count").textContent = `${n} ${n === 1 ? "Ruta" : "Rutas"}`;
   $("#traverse-list").innerHTML = n ? s.traverses.map((t) => {
+    const name = /^Travesía \d+$/.test(t.name) ? translate(t.name) : t.name;
     const v = t.result?.variants?.find((x) => x.variant === t.variant);
     const status = t.status === "infeasible" ? `<span style="color:var(--danger)">Inviable</span>`
       : v ? `${fmt.m(v.metrics.distance_m)} · ${fmt.dur(v.metrics.duration_s)}${t.saved ? " · guardada" : ""}` : t.result?.static_origin ? fmt.m(t.result.direct.distance_m) : "Sin calcular";
     return `<article class="trav ${t.id === s.activeTraverse ? "active" : ""}" data-tid="${t.id}" tabindex="0" aria-current="${t.id === s.activeTraverse}">
-      <div class="trav-head"><span class="dot"></span><span class="trav-name" title="Doble clic para renombrar"><span data-no-localize>${esc(t.name)}</span></span>
-        <button class="btn btn-icon" data-act="rename" aria-label="Renombrar ${esc(t.name)}">${icon("edit")}</button>
-        <button class="btn btn-icon" data-act="eye" aria-pressed="${t.visible !== false}" aria-label="Mostrar u ocultar ${esc(t.name)}">${icon(t.visible === false ? "eyeoff" : "eye")}</button>
-        <button class="btn btn-icon" data-act="delete" aria-label="Eliminar ${esc(t.name)}">${icon("x")}</button></div>
+      <div class="trav-head"><span class="dot"></span><span class="trav-name" title="Doble clic para renombrar"><span data-no-localize>${esc(name)}</span></span>
+        <button class="btn btn-icon" data-act="rename" aria-label="Renombrar ${esc(name)}">${icon("edit")}</button>
+        <button class="btn btn-icon" data-act="eye" aria-pressed="${t.visible !== false}" aria-label="Mostrar u ocultar ${esc(name)}">${icon(t.visible === false ? "eyeoff" : "eye")}</button>
+        <button class="btn btn-icon" data-act="delete" aria-label="Eliminar ${esc(name)}">${icon("x")}</button></div>
       <div class="trav-sub">${esc(label(t.origin))} → ${esc(label(t.destination))}</div>
       <div class="trav-foot"><span>${status}</span>${t.id === s.activeTraverse ? '<span class="st-active">ACTIVA</span>' : ""}</div></article>`;
   }).join("") : `<div class="empty-state">Sin travesías. Crea una con «Nueva travesía».</div>`;
