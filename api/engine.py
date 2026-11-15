@@ -296,7 +296,8 @@ class Engine:
                             raise TimeoutError from error
                         return []
                 points, pnr = navigation.check_retreat(points, pnr, forecast, inventory, reserve,
-                                                       return_prefix, return_path)
+                                                       return_prefix, return_path,
+                                                       return_distance_limit=params.get("eva_return_distance_m"))
         if pnr["status"] == "infeasible":
             key = pnr["limiting_resource"]
             margin = pnr["resource_margins"][key]
@@ -325,7 +326,7 @@ class Engine:
         result = {"feasible": True, "region_key": region, "profile": profile,
                   "asset_id": asset["id"] if profile and asset else None, "static_origin": profile is None,
                   "direct": {"distance_m": distance, "points": [{"lat": lat, "lon": lon} for lat, lon in (o, d)]},
-                  "variants": [], "recommended": None, "operational_route": True, "route_model": 4, "costmap_version": self.swarm.costmap_version}
+                  "variants": [], "recommended": None, "operational_route": True, "route_model": 5, "costmap_version": self.swarm.costmap_version}
         if profile is None:
             return result
 
@@ -352,6 +353,8 @@ class Engine:
             raise RouteInfeasible("walkback_exceeded", f"Un punto excede el radio de retorno a pie de {walk_limit:.0f} m.",
                                   walkback_limit_m=walk_limit, reasons=[{"code": "walkback", "detail": f"Radio de retorno a pie: {walk_limit:.0f} m."}])
         distance_limit = walk_limit if profile == "astronaut" else ROVER_DEMO_RANGE_M
+        if profile == "astronaut":
+            params = {**params, "eva_return_distance_m": walk_limit}
         params = {**params, "max_distance_m": min(distance_limit, params.get("max_distance_m") or distance_limit)}
         asset_speed = (asset or {}).get("speed_mps")
         speed = params.get("speed_mps") or asset_speed

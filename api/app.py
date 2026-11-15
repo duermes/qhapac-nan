@@ -584,7 +584,8 @@ def eva_surface_route(req: S.EvaSurfaceRoute):
             if math.hypot(ax + fraction * dx - center[0], ay + fraction * dy - center[1]) <= lava["radius_m"]:
                 navigation.forbid([navigation.issue("hazard", "El sendero cruza los tubos de lava.")])
     surface_slope = training.get("local_max_slope_deg", 24)
-    params = {"max_distance_m": walk_limit, "max_slope_deg": surface_slope, "ltst_h": req.ltst_h}
+    params = {"max_distance_m": walk_limit, "max_slope_deg": surface_slope, "ltst_h": req.ltst_h,
+              "eva_return_distance_m": walk_limit}
     terrain, costmap, link = engine.operational_costmap(engine.default_region(), "astronaut", params, asset=asset)
     navigation.check_endpoints(terrain, costmap, [((points[0]["lat"], points[0]["lon"]), "origen"),
                                                   ((points[-1]["lat"], points[-1]["lon"]), "destino")])

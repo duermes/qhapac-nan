@@ -72,7 +72,7 @@ async function restore() {
     ctx.sessions = ws.sessions.map((s) => ({
       ...newSession(), ...s, params: restoreParams(s.params),
       traverses: (s.traverses || []).map((t) => {
-        const legacy = t.result && !t.result.static_origin && t.result.route_model !== 4;
+        const legacy = t.result && !t.result.static_origin && t.result.route_model !== 5;
         return { ...t, params: restoreParams(t.params || s.params),
           ...(legacy ? { result: null, status: "draft", saved: false } : {}) };
       }),
@@ -216,7 +216,9 @@ export function routeOverlays() {
     const active = t.id === s.activeTraverse;
     if ((t.showCalc ?? s.showCalc) && v) {
       out.push({ id: `${t.id}:calc`, points: v.points, color: "#65d8ff", width: active ? 3.5 : 2.5,
-        segments: v.pnr?.show_pnr || v.pnr?.classification === "INDETERMINATE" ? v.pnr.segments : null, pnr: v.pnr?.show_pnr ? v.pnr.pnr_point : null });
+        segments: v.pnr?.show_pnr || v.pnr?.classification === "INDETERMINATE" ? v.pnr.segments : null, pnr: v.pnr?.show_pnr && v.pnr.pnr_point ? {
+          ...v.pnr.pnr_point, kind: "pnr", traverse: t.name, consumables: v.pnr.consumables_at_pnr,
+        } : null });
     }
     if (t.result.direct && (t.showDirect ?? (t.result.static_origin || (s.showDirect && active)))) {
       out.push({ id: `${t.id}:direct`, points: t.result.direct.points, color: "#ebcf7f", width: 1.8, dash: [2, 6] });

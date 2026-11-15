@@ -201,7 +201,8 @@ class TravelForecast:
         return list(found.values())
 
 
-def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_return=None):
+def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_return=None,
+                  return_distance_limit=None):
     """Find the first point whose immediate retreat fails under projected conditions."""
     if len(points) < 2:
         return points, pnr
@@ -215,24 +216,29 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
         elapsed = spent["duration_s"]
 
         def assess(back):
-            consumed = route_metrics(back, profile, speed)["resources"]
+            metrics = route_metrics(back, profile, speed)
+            consumed = metrics["resources"]
             margins = {k: budgets[k] - spent["resources"].get(k, 0) - consumed.get(k, 0) for k in budgets}
             limiting = min(margins, key=lambda k: margins[k] / inventory[k][1])
             problems = forecast.violations(back, elapsed)
+            if return_distance_limit is not None and spent["distance_m"] + metrics["distance_m"] > return_distance_limit + 1e-6:
+                problems.append(issue("distance", f"La ida más el regreso superan el alcance EVA de {return_distance_limit:.0f} m."))
             if margins[limiting] < -1e-9:
                 problems.append(issue("resources"))
             return problems, margins, limiting, consumed
 
         reverse = list(reversed(path)) + prefix
         problems, margins, limiting, consumed = assess(reverse)
-        if problems and find_return and path[-1]["distance_m"] > 1:
-            start = path[-1]
+        start = path[-1]
+        minimum_return = haversine_m(start["lat"], start["lon"], home["lat"], home["lon"])
+        within_range = return_distance_limit is None or spent["distance_m"] + minimum_return <= return_distance_limit + 1e-6
+        if problems and find_return and start["distance_m"] > 1 and within_range:
             alternative = find_return((start["lat"], start["lon"]), (home["lat"], home["lon"]), elapsed)
             if alternative:
                 other = assess(alternative)
                 if not other[0]:
-                    return other
-        return problems, margins, limiting, consumed
+                    return (*other, spent)
+        return problems, margins, limiting, consumed, spent
 
     from bisect import bisect_right
     from .pnr import search_pnr
@@ -249,8 +255,7 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
 
     def evaluate(distance):
         i, probe = at(distance)
-        problems, margins, limiting, consumed = check([*points[:i + 1], probe])
-        spent = route_metrics([*points[:i + 1], probe], profile, speed)
+        problems, margins, limiting, consumed, spent = check([*points[:i + 1], probe])
         return {"viable": not problems, "reasons": problems, "margins": margins,
                 "limiting": limiting, "consumed": consumed, "arrival_time_s": spent["duration_s"],
                 "remaining": {key: available - spent["resources"].get(key, 0) for key, (available, _) in inventory.items()}}
@@ -269,15 +274,20 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
                status="indeterminate" if status == "INDETERMINATE" else "round_trip_safe")
     if status == "PNR_FOUND":
         distance = analysis["verified_until_m"]
+        at_boundary = evaluate(distance)
         i, marker = at(distance)
         index = i + 1 if distance > distances[i] + 1e-8 else i
         if index == i + 1 and abs(distance - distances[i + 1]) > 1e-8:
             points = [*points[:index], marker, *points[index:]]
         sample = analysis["sample"]
-        pnr.update(status="pnr_exceeded", show_pnr=True, pnr_index=index,
+        remaining = {
+            key: {"amount": amount, "percent": 100 * amount / inventory[key][1]}
+            for key, amount in at_boundary["remaining"].items()
+        }
+        pnr.update(status="pnr_exceeded", consumables_at_pnr=remaining, show_pnr=True, pnr_index=index,
                    pnr_point={key: points[index][key] for key in ("lat", "lon", "elevation_m", "distance_m")},
                    return_reasons=sample["reasons"], limiting_resource=sample["limiting"],
-                   return_state={key: sample[key] for key in ("margins", "remaining", "arrival_time_s", "consumed")},
+                   return_state={key: at_boundary[key] for key in ("margins", "remaining", "arrival_time_s", "consumed")},
                    boundary_interval_m=[distance, analysis["distance_m"]])
     elif status == "NO_PNR_VERIFIED":
         sample = evaluate(distances[-1])

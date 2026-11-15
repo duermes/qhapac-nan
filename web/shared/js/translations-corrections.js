@@ -1,5 +1,14 @@
 // Shared labels and dynamic vocabulary: DOM, canvas maps, forms and API messages.
 export const correctionEnglish = {
+  "Comandos de voz": "Voice commands",
+  "Pulsa K o el botón de voz para dar una orden.": "Press K or the voice button to give a command.",
+  "Captura de Hatun Wasi": "Hatun Wasi screenshot", "Captura de Chaski": "Chaski screenshot",
+  "Monitor de Chaski": "Chaski monitor",
+  "Consumibles restantes al llegar": "Consumables remaining on arrival",
+  "Distancia recorrida": "Distance travelled",
+  "Último punto del trayecto donde Khipu verifica el regreso al origen dentro del alcance y la reserva previstos. Después de este punto se puede continuar al destino.": "Last point on the route where Khipu verifies the return to the start within the planned range and reserve. You can continue to the destination beyond this point.",
+  "Costra quebradiza sobre conductos de lava. Mantén distancia.": "Brittle crust over lava tubes. Keep clear.",
+
   "Peligro": "Risk", "Peso de peligro": "Risk weight",
   "Retorno con reserva hasta el PNR": "Return with reserve up to the point of no return",
   "Retorno no garantizado desde el PNR": "Return not guaranteed beyond the point of no return",

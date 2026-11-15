@@ -5,3 +5,8 @@ const preset = {
 
 export const HUD_MANIFEST = { presets: { JEZERO_MARS: preset } };
 export const AssetRegistry = { getHudPreset: key => HUD_MANIFEST.presets[key] || preset };
+
+export const MONITOR_IMAGES = Object.freeze({
+    hatunWasi: "/static/hud/assets/monitors/hatun-wasi.jpg",
+    chaski: "/static/hud/assets/monitors/chaski.jpg",
+});

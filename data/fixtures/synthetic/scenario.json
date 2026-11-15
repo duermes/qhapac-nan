@@ -343,7 +343,7 @@
     "walkback_limit_m": 8000,
     "local_max_slope_deg": 24,
     "ice_site": {"x": 48, "z": -80},
-    "lava_tubes": {"id": "EVA_LAVA_TUBES", "name": "Tubos de lava", "x": 16, "z": 32, "radius_m": 10, "warning_distance_m": 12},
+    "lava_tubes": {"id": "EVA_LAVA_TUBES", "name": "Tubos de lava", "x": -121, "z": 104, "radius_m": 17, "warning_distance_m": 12},
     "reserve_fraction": 0.25
   }
 }

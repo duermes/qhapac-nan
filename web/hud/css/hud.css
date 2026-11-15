@@ -179,3 +179,5 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
   .status-column .north { width: 105px; }
   .status-column .compass-ring { width: 42px; height: 42px; }
 }
+
+.monitor-preview { display: block; width: 100%; height: auto; margin-bottom: 10px; border: 1px solid var(--joint); }

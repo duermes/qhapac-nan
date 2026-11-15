@@ -105,7 +105,7 @@ export class EvaScene {
     const kinds = { base: "base", rover: "rover", astronaut: "astronaut", crew: "astronaut", science: "poi", antenna: "antenna", hazard: "hazard" };
     const entries = this.world.pois.map((p, i) => ({
       id: i === 0 ? "BASE_ALFA" : `EVA_POI_${i}`,
-      name: p.name, description: p.description, kind: i === 0 ? "base" : p.tag === "COMMS" ? "antenna" : kinds[p.type] === "base" ? "landmark" : kinds[p.type] || "landmark",
+      name: p.name, description: p.description, monitor: p.monitor, kind: i === 0 ? "base" : p.tag === "COMMS" ? "antenna" : kinds[p.type] === "base" ? "landmark" : kinds[p.type] || "landmark",
       ...this.toLatLon(p.x, p.z), x: p.x, z: p.z, provenance: "synthetic", actor: p.actor, activity: p.actor?.activity
     }));
     for (const s of this.world.collectibleSamples) entries.push({ id: s.id, kind: "sample", name: s.name, description: s.yield, ...this.toLatLon(s.x, s.z), x: s.x, z: s.z, provenance: "synthetic" });
@@ -172,6 +172,19 @@ export class EvaScene {
     const ctx = this.world.monitorCanvas.getContext("2d");
     ctx.fillStyle = "#101612";
     ctx.fillRect(0, 0, 512, 256);
+    const screenshot = this.world.monitorScreenshot;
+    if (screenshot.complete && screenshot.naturalWidth) {
+      const scale = Math.min(496 / screenshot.naturalWidth, 223 / screenshot.naturalHeight);
+      const w = screenshot.naturalWidth * scale, h = screenshot.naturalHeight * scale;
+      ctx.drawImage(screenshot, (512 - w) / 2, 4, w, h);
+      ctx.fillStyle = "#dfbd80";
+      ctx.font = "13px monospace";
+      ctx.fillText(translate("Oxígeno") + " " + (vitals.o2_kg / 1.2 * 100).toFixed(0) + "%   "
+        + translate("Batería") + " " + (vitals.battery_wh / 1100 * 100).toFixed(0) + "%   "
+        + translate("Muestras") + " " + samples + "/16", 12, 246);
+      this.world.monitorTexture.needsUpdate = true;
+      return;
+    }
     ctx.strokeStyle = "#b96f49";
     ctx.strokeRect(8, 8, 496, 240);
     ctx.fillStyle = "#dfbd80";

@@ -11,10 +11,10 @@ import { drawLayer, LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.j
 import { $, $$, classLegend, colocatedScience, colocatedScienceSelect, esc, modal, provBadge, scienceDetails, simBanner, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 
-const DEMO_SPEED_MULTIPLIER = 8;
+const DEMO_SPEED_MULTIPLIER = 32;
 const ROVER_ID = new URLSearchParams(location.search).get("rover") || "ROVER_PR1";
 const S = {
-  mode: "navigate", view: "2d", radar: false, panels: true, layer: "relief",
+  mode: "navigate", view: "2d", radar: true, panels: true, layer: "relief",
   speed: 0, heading: 135, lat: 0, lon: 0, battery: 1, capacity: 120000,
   route: null, target: null, telecom: null, layers: { slope: false, hazard: false, ibio: false, telecom: false },
   demoKeys: new Set(), simDistance: 0, simEnergy: 0, simSeconds: 0, fsm: "GO", slip: 0, pitch: 0, roll: 0, link: null, loc: null,
@@ -273,11 +273,13 @@ function updatePanels() {
   $("#link").style.color = S.link != null && S.link < 0 ? "var(--danger)" : "";
   const warning = updateHazardWarning();
   const z = $("#zone");
-  z.className = `tile zone ${warning?.critical || S.fsm === "ABORT" ? "abort" : warning || S.fsm === "CAUTION" ? "caution" : ""}`;
-  z.firstElementChild.textContent = warning?.critical ? "ZONA PROHIBIDA" : warning ? "PRECAUCIÓN"
-    : S.fsm === "GO" ? "ZONA SEGURA" : S.fsm === "CAUTION" ? "PRECAUCIÓN" : "ABORTAR";
-  $("#fsm").textContent = `[${S.fsm}]`;
-  z.title = (S.fsmReasons || []).join(", ");
+  const state = warning?.critical || S.fsm === "ABORT" ? "ABORT" : warning && S.fsm === "GO" ? "CAUTION" : S.fsm;
+  S.displayState = state;
+  z.className = `tile zone ${state === "ABORT" ? "abort" : state === "CAUTION" ? "caution" : ""}`;
+  z.firstElementChild.textContent = warning?.critical ? "ZONA PROHIBIDA"
+    : state === "ABORT" ? "ABORTAR" : state === "CAUTION" ? "PRECAUCIÓN" : "ZONA SEGURA";
+  $("#fsm").textContent = `[${state}]`;
+  z.title = [warning?.zone.name, ...(S.fsmReasons || [])].filter(Boolean).join(", ");
   const sgn = (v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}°`;
   $("#pitch").textContent = sgn(S.pitch); $("#pitch").style.color = Math.abs(S.pitch) > 15 ? "var(--danger)" : "var(--gold)";
   $("#roll").textContent = sgn(S.roll); $("#roll").style.color = Math.abs(S.roll) > 12 ? "var(--danger)" : "var(--safe)";
@@ -523,8 +525,8 @@ function handleIntent(r) {
     if (point) return planTo(point).then((route) => route ? "Travesía calculada." : "No se encontró una ruta viable.");
   }
   if (r.intent === "poi_info") { const e = entities.find((x) => x.id === r.poi_id); if (e) inspectEntity(e); }
-  if (r.intent === "status") toast(`Batería ${fmt.pct(S.battery * 100)} · enlace ${S.link?.toFixed(1) ?? "—"} dB · estado ${S.fsm}`, "", 5000);
-  if (r.intent === "filter_pois") { S.radar = r.category !== "all" || true; $("#science-radar").setAttribute("aria-pressed", "true"); refresh(); }
+  if (r.intent === "status") toast(`Batería ${fmt.pct(S.battery * 100)} · enlace ${S.link?.toFixed(1) ?? "—"} dB · estado ${S.displayState || S.fsm}`, "", 5000);
+  if (r.intent === "filter_pois") { S.radar = true; $("#science-radar").setAttribute("aria-pressed", "true"); refresh(); }
 }
 
 function renderLegend() {

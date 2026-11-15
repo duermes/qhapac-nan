@@ -191,13 +191,22 @@ export class Map2D {
       const r = cv.getBoundingClientRect();
       const x = e.clientX - r.left, y = e.clientY - r.top;
       if (down && !moved) {
-        const hit = this.hitEntity(x, y);
+        const hit = this.hitPnr(x, y) || this.hitEntity(x, y);
         this.emit("click", this.screenToLL(x, y), hit, { x, y });
       } else if (dragEnt && moved) {
         this.emit("entitydrop", dragEnt, this.screenToLL(x, y));
       }
       down = null; dragEnt = null;
     });
+  }
+
+  hitPnr(x, y) {
+    for (const route of [...this.routes].reverse()) {
+      if (route.visible === false || !route.pnr) continue;
+      const p = this.llToScreen(route.pnr.lat, route.pnr.lon);
+      if (x >= p.x - 9 && x <= p.x + 40 && Math.abs(y - p.y) <= 10) return route.pnr;
+    }
+    return null;
   }
 
   hitEntity(x, y) {
@@ -362,11 +371,15 @@ export class Map2D {
         ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
       }
       ctx.setLineDash([]);
-      if (rt.pnr) {
+    }
+    // Draw markers last so a crossing route cannot cover the PNR.
+    for (const rt of this.routes) {
+      if (rt.visible !== false && rt.pnr) {
         const p = this.llToScreen(rt.pnr.lat, rt.pnr.lon);
         ctx.fillStyle = "#ff8c36"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - 8); ctx.lineTo(p.x + 7, p.y + 5); ctx.lineTo(p.x - 7, p.y + 5); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.font = "600 10px 'Chakra Petch'"; ctx.fillStyle = "#ffd0ac"; ctx.fillText("PNR", p.x + 9, p.y + 4);
+        ctx.fillStyle = "#20160f"; ctx.fillRect(p.x + 9, p.y - 9, 30, 18);
+        ctx.font = "bold 12px 'Chakra Petch'"; ctx.fillStyle = "#ffd0ac"; ctx.fillText("PNR", p.x + 12, p.y + 4);
       }
     }
   }

@@ -254,6 +254,7 @@ export class Map3D {
         }));
         sprite.position.copy(this.toWorld(route.pnr.lat, route.pnr.lon, 0.7));
         sprite.center.set(0.12, 0.5); sprite.scale.set(0.048, 0.018, 1);
+        sprite.userData.pnr = route.pnr;
         tag(sprite);
       }
     }
@@ -429,6 +430,18 @@ export class Map3D {
     return this.g.fromXZ(hit.point.x, hit.point.z);
   }
 
+  hitPnr(x, y, width, height) {
+    for (const object of [...this.overlay.children].reverse()) {
+      if (!object.userData.pnr) continue;
+      const v = object.position.clone().project(this.camera);
+      if (Math.abs(v.z) > 1) continue;
+      const left = x - (v.x + 1) * width / 2;
+      const top = y - (1 - v.y) * height / 2;
+      if (left >= -10 && left <= Math.max(34, height * 0.05) && Math.abs(top) <= 12) return object.userData.pnr;
+    }
+    return null;
+  }
+
   bind() {
     let down = null;
     const c = this.renderer.domElement;
@@ -437,7 +450,7 @@ export class Map3D {
       if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 4) {
         const bounds = c.getBoundingClientRect();
         const screen = { x: e.clientX - bounds.left, y: e.clientY - bounds.top };
-        const hit = this.markers?.find(({ el }) => {
+        const hit = this.hitPnr(screen.x, screen.y, bounds.width, bounds.height) || this.markers?.find(({ el }) => {
           const r = el.getBoundingClientRect();
           return !el.hidden && el.style.display !== "none" && r.width > 0 &&
             e.clientX >= r.left - 5 && e.clientX <= r.right + 5 &&

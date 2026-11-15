@@ -82,3 +82,40 @@ def test_eva_demo_has_a_stable_return_boundary_on_mola(client, monkeypatch, tmp_
         assert index > 0
         assert all(s["state"] == "safe" for s in result["segments"][:index])
         assert all(s["state"] == "no_return" for s in result["segments"][index:])
+
+
+
+def test_eva_return_range_applies_with_full_consumables():
+    from khipu.geodesy import TangentPlane
+    from khipu.navigation import check_retreat
+    from khipu.resources import assess_route, segment_cost
+
+    class ClearForecast:
+        profile = "astronaut"
+        speed = 0.9
+        params = {}
+
+        @staticmethod
+        def violations(points, start_s):
+            return []
+
+    projection = TangentPlane(0, 0)
+    end_lat, end_lon = projection.to_latlon(6000, 0)
+    points = [
+        {"lat": 0, "lon": 0, "elevation_m": 0, "distance_m": 0},
+        {"lat": end_lat, "lon": end_lon, "elevation_m": 0, "distance_m": 6000},
+    ]
+    inventory = {"o2_kg": (1.2, 1.2), "water_kg": (3.6, 3.6), "battery_wh": (1100, 1100)}
+    reserve = dict.fromkeys(inventory, 0.25)
+    marked, pnr = assess_route(points, "astronaut", inventory, reserve, 0.9)
+    assert not pnr["show_pnr"]
+    marked, pnr = check_retreat(marked, pnr, ClearForecast(), inventory, reserve, return_distance_limit=8000)
+    assert pnr["pnr_point"]["distance_m"] == 4000
+    assert pnr["return_reasons"][0]["code"] == "distance"
+    assert [segment["state"] for segment in pnr["segments"]] == ["safe", "no_return"]
+    assert marked[pnr["pnr_index"]]["distance_m"] == 4000
+    assert set(pnr["consumables_at_pnr"]) == set(inventory)
+    for key, values in pnr["consumables_at_pnr"].items():
+        assert 25 < values["percent"] < 100
+        assert values["percent"] == 100 * values["amount"] / inventory[key][1]
+        assert abs(values["amount"] - (inventory[key][0] - segment_cost("astronaut", 4000, 0, 0.9)[key])) < 1e-8

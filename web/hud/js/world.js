@@ -1,6 +1,6 @@
 import { translate } from "/static/shared/js/language.js";
 import * as THREE from "three";
-import { AssetRegistry, HUD_MANIFEST } from "./world-assets.js";
+import { AssetRegistry, HUD_MANIFEST, MONITOR_IMAGES } from "./world-assets.js";
 export class Terrain3D {
     constructor(scene, camera, presetKey = 'JEZERO_MARS', surfaceSampler = () => 0, training = {}) {
         this.scene = scene;
@@ -67,16 +67,13 @@ export class Terrain3D {
     }
     initTrainingSites({ ice_site: ice, lava_tubes: lava }) {
         if (lava) {
-            const y = this.getSmoothHeightAt(lava.x, lava.z);
-            const tube = new THREE.Mesh(new THREE.TorusGeometry(3.3, 0.85, 8, 22),
-                new THREE.MeshStandardMaterial({ color: 0x422c26, roughness: 1 }));
-            const mouth = new THREE.Mesh(new THREE.CircleGeometry(2.5, 24),
-                new THREE.MeshBasicMaterial({ color: 0x160c0a, side: THREE.DoubleSide }));
-            tube.position.set(lava.x, y + 1.5, lava.z);
-            mouth.position.copy(tube.position);
-            this.scene.add(tube, mouth);
+            const surface = this.groundPatch(lava.x, lava.z, lava.radius_m);
+            const crust = new THREE.MeshBasicMaterial({ map: this.lavaCrustTexture(), side: THREE.DoubleSide });
+            const patch = new THREE.Mesh(surface, crust);
+            patch.name = lava.id;
+            this.scene.add(patch);
             this.colliders.push({ ...lava, radius: lava.radius_m });
-            this.pois.push({ ...lava, type: "hazard", tag: "RISK", description: "Tubos de lava inestables. Mantén distancia." });
+            this.pois.push({ ...lava, type: "hazard", tag: "RISK", description: "Costra quebradiza sobre conductos de lava. Mantén distancia." });
         }
         if (ice) {
             const sample = this.collectibleSamples.find((item) => item.type === "ice");
@@ -92,6 +89,84 @@ export class Terrain3D {
                 shard.position.set(x, this.getSmoothHeightAt(x, z) + 0.35, z);
                 this.scene.add(shard);
             }
+        }
+        this.initGlaciers();
+    }
+    groundPatch(x, z, radius) {
+        // Several rings follow the terrain, with an irregular perimeter inside the collision radius.
+        const rings = 12, segments = 48;
+        const positions = [x, this.getSmoothHeightAt(x, z) + 0.06, z];
+        const uv = [0.5, 0.5], indices = [];
+        for (let ring = 1; ring <= rings; ring++) {
+            for (let i = 0; i < segments; i++) {
+                const angle = i / segments * Math.PI * 2;
+                const extent = 0.86 + 0.08 * Math.sin(3 * angle) + 0.06 * Math.cos(7 * angle);
+                const dx = Math.cos(angle) * radius * extent * ring / rings;
+                const dz = Math.sin(angle) * radius * extent * ring / rings;
+                positions.push(x + dx, this.getSmoothHeightAt(x + dx, z + dz) + 0.06, z + dz);
+                uv.push(0.5 + dx / (2 * radius), 0.5 + dz / (2 * radius));
+                const a = 1 + (ring - 1) * segments + i;
+                const b = 1 + (ring - 1) * segments + (i + 1) % segments;
+                if (ring === 1) indices.push(0, b, a);
+                else indices.push(a - segments, b, a, a - segments, b - segments, b);
+            }
+        }
+        const patch = new THREE.BufferGeometry();
+        patch.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        patch.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+        patch.setIndex(indices);
+        patch.computeVertexNormals();
+        return patch;
+    }
+    lavaCrustTexture() {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 256;
+        const ctx = canvas.getContext("2d");
+        const image = ctx.createImageData(256, 256);
+        const cells = Array.from({ length: 28 }, (_, i) => [
+            (i * 67 + 41) % 257, (i * i * 53 + 29) % 257,
+        ]);
+        for (let y = 0; y < 256; y++) {
+            for (let x = 0; x < 256; x++) {
+                const dx = x + 5 * Math.sin(y / 8), dy = y + 4 * Math.sin(x / 10);
+                let first = Infinity, second = Infinity;
+                for (const [px, py] of cells) {
+                    const d = (px - dx) ** 2 + (py - dy) ** 2;
+                    if (d < first) { second = first; first = d; }
+                    else if (d < second) second = d;
+                }
+                const glow = Math.max(0, 1 - (Math.sqrt(second) - Math.sqrt(first)) / 3.7) ** 1.6;
+                const grit = (x * 103 + y * 153 + (x * y) % 137) % 17;
+                const index = (y * 256 + x) * 4;
+                image.data.set([34 + grit + 215 * glow, 25 + grit + 160 * glow ** 2,
+                    20 + grit + 60 * glow ** 4, 255], index);
+            }
+        }
+        ctx.putImageData(image, 0, 0);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
+    }
+    initGlaciers() {
+        const ice = new THREE.MeshStandardMaterial({ color: 0x84b9d5, roughness: 0.63, flatShading: true });
+        const crust = new THREE.MeshStandardMaterial({ color: 0xb6c9d4, roughness: 0.92, side: THREE.DoubleSide });
+        const ridge = new THREE.IcosahedronGeometry(1, 1);
+        for (const [x, z] of [[-111, -135], [116, -124], [129, 112], [-32, 129]]) {
+            if (this.pois.some((p) => Math.hypot(x - p.x, z - p.z) < 22)) continue;
+            const glacier = new THREE.Group();
+            glacier.name = "Glaciar";
+            glacier.add(new THREE.Mesh(this.groundPatch(x, z, 10), crust));
+            for (let i = 0; i < 9; i++) {
+                const dx = (i - 4) * 1.45, dz = Math.sin(i * 2.2) * 2.5;
+                if (this.colliders.some((c) => Math.hypot(x + dx - c.x, z + dz - c.z) < c.radius + 1.8)) continue;
+                const block = new THREE.Mesh(ridge, ice);
+                block.scale.set(2.1, 0.85 + (i % 4) * 0.68, 3.2);
+                block.rotation.y = i * 0.43;
+                block.position.set(x + dx, this.getSmoothHeightAt(x + dx, z + dz) + 0.4, z + dz);
+                glacier.add(block);
+                this.colliders.push({ x: x + dx, z: z + dz, radius: 2.3, name: "Glaciar" });
+            }
+            this.scene.add(glacier);
         }
     }
     createMultiLayerMarsTexture() {
@@ -611,6 +686,8 @@ export class Terrain3D {
         this.baseInteriorGroup.add(ambientInterior);
         const monitorCanvas = document.createElement('canvas');
         this.monitorCanvas = monitorCanvas;
+        this.monitorScreenshot = new Image();
+        this.monitorScreenshot.src = MONITOR_IMAGES.hatunWasi;
         monitorCanvas.width = 512;
         monitorCanvas.height = 256;
         const mCtx = monitorCanvas.getContext('2d');
@@ -708,6 +785,22 @@ export class Terrain3D {
         const mastHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: 0x37474f }));
         mastHead.position.set(0.6, 3.8, 1.6);
         roverGroup.add(mastHead);
+        if (isMountable) {
+            if (!this.roverMonitorTexture) {
+                this.roverMonitorTexture = new THREE.TextureLoader().load(MONITOR_IMAGES.chaski);
+                this.roverMonitorTexture.colorSpace = THREE.SRGBColorSpace;
+            }
+            const panel = new THREE.Group();
+            panel.name = "Monitor de Chaski";
+            const casing = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.94, 0.12), wheelMat);
+            const display = new THREE.Mesh(new THREE.PlaneGeometry(1.48, 0.83),
+                new THREE.MeshBasicMaterial({ map: this.roverMonitorTexture, toneMapped: false }));
+            display.position.z = 0.062;
+            panel.add(casing, display);
+            panel.position.set(0, 2.5, -1.5);
+            panel.rotation.set(0.48, Math.PI, 0);
+            roverGroup.add(panel);
+        }
         roverGroup.position.set(rx, ry, rz);
         this.scene.add(roverGroup);
         this.colliders.push({ x: rx, z: rz, radius: 2.8, name: name });
@@ -716,6 +809,7 @@ export class Terrain3D {
             z: rz,
             name: name,
             tag: isMountable ? "ROVER CABINA" : "ROVER",
+            monitor: isMountable ? MONITOR_IMAGES.chaski : null,
             icon: "🚜",
             type: "rover",
             color: "#ffb300",

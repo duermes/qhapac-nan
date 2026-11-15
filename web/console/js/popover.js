@@ -57,8 +57,27 @@ function place(screen) {
 
 function onMapClick({ ll, hit, screen }) {
   if (ctx.cur.addMode) { addPointDialog(ll); return; }
+  if (hit?.kind === "pnr") { openPnr(hit, screen); return; }
   if (hit) { openEntity(hit, screen); return; }
   close(); // Empty terrain is inspected by the shared risk deck only.
+}
+
+function openPnr(point, screen) {
+  const resources = { o2_kg: ["Oxígeno", "kg"], water_kg: ["Agua", "kg"], battery_wh: ["Batería", "Wh"] };
+  const values = Object.entries(point.consumables || {}).map(([key, value]) => {
+    const [name, unit] = resources[key];
+    return `<dt>${name}</dt><dd>${fmt.pct(value.percent)} · ${fmt.num(value.amount, 2)} ${unit}</dd>`;
+  }).join("");
+  pop.setAttribute("aria-label", "Punto de no retorno");
+  pop.innerHTML = `<div class="pop-head"><div><div class="pop-title">Punto de no retorno</div>
+    <div class="pop-kind">${esc(point.traverse)}</div></div>
+    <button class="btn btn-icon" data-x aria-label="Cerrar">${icon("x")}</button></div>
+    <div class="pop-body"><p>Último punto del trayecto donde Khipu verifica el regreso al origen dentro del alcance y la reserva previstos. Después de este punto se puede continuar al destino.</p>
+    <dl class="kv"><dt>Posición</dt><dd>${fmt.lat(point.lat)} · ${fmt.lon(point.lon)}</dd>
+    <dt>Distancia recorrida</dt><dd>${fmt.m(point.distance_m)}</dd></dl>
+    ${values ? `<div class="kicker">Consumibles restantes al llegar</div><dl class="kv">${values}</dl>` : ""}</div>`;
+  place(screen);
+  pop.querySelector("[data-x]").onclick = close;
 }
 
 function metaBlock(lat, lon) {
@@ -69,6 +88,7 @@ function metaBlock(lat, lon) {
 
 
 function openEntity(e, screen, editing = false) {
+  pop.setAttribute("aria-label", "Detalle del punto");
   ctx.selection = e;
   refreshScene();
   const reg = ASSET_REGISTRY[markerKind(e)] || ASSET_REGISTRY.waypoint;

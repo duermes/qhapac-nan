@@ -162,6 +162,11 @@ function renderLayers() {
   const deck = ctx.decks.layers;
   if (deck.hidden) return;
   const session = ctx.cur;
+  const scrollTop = deck.body.scrollTop;
+  const focused = document.activeElement;
+  const focusLayer = focused?.closest("[data-layer]")?.dataset.layer;
+  const focusParam = focused?.dataset.param;
+  const focusType = focused?.type;
   const cats = Object.groupBy(Object.values(ctx.catalog), (layer) => layer.category);
   const anyTemporal = Object.entries(session.layers).some(([id, layer]) => ctx.catalog[id]?.temporal && layer.realtime === false);
   deck.body.innerHTML = `<div class="layer-top">
@@ -217,6 +222,13 @@ function renderLayers() {
     });
     row.querySelector("[data-reset]").addEventListener("click", () => resetLayer(id));
   });
+  if (focusLayer && focusParam) {
+    const row = deck.body.querySelector('[data-layer="' + CSS.escape(focusLayer) + '"]');
+    const control = $$(".layer-settings [data-param]", row ?? deck.body)
+      .find((input) => input.dataset.param === focusParam && input.type === focusType);
+    control?.focus({ preventScroll: true });
+  }
+  deck.body.scrollTop = scrollTop;
 }
 
 // ------------------------------------------------------------------ legend

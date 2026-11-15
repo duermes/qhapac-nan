@@ -6,6 +6,7 @@ import { $, $$, colocatedScience, esc, modal, scienceDetails, toast } from "/sta
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 import { currentLanguage } from "/static/shared/js/language.js";
 import { EvaScene } from "./scene.js";
+import { MONITOR_IMAGES } from "./world-assets.js";
 import { consume, createVitals, refreshVitals, renderAlerts, renderVitals } from "./vitals.js";
 import { localRoute } from "./navigation.js";
 import { evaRequest } from "./eva-api.js";
@@ -71,6 +72,7 @@ async function boot() {
     api.harness().then((h) => { if (h.active.some((a) => a.kind === "suit_leak"))
         vit.leak = 2.2; }).catch(() => { });
     renderHelp();
+    document.addEventListener("qn:language", renderHelp);
     planToTarget(true);
     let last = performance.now();
     const loop = (t) => {
@@ -308,7 +310,7 @@ async function interact(key) {
     panels();
     slow();
   } else if (key !== "f" && H.prompt === "monitor") {
-    modal({ title: "Monitor de misión · Base Alfa", body: `<dl class="kv"><dt>Tripulación</dt><dd>Hábitat presurizado</dd><dt>Muestras</dt><dd>${H.samples.length}/${SAMPLE_CAPACITY}</dd><dt>O₂</dt><dd>${(vit.o2_kg / 1.2 * 100).toFixed(1)}%</dd><dt>Batería</dt><dd>${(vit.battery_wh / 1100 * 100).toFixed(1)}%</dd></dl>` });
+    modal({ title: "Monitor de misión · Base Alfa", body: `<img class="monitor-preview" src="${MONITOR_IMAGES.hatunWasi}" alt="Captura de Hatun Wasi"><dl class="kv"><dt>Tripulación</dt><dd>Hábitat presurizado</dd><dt>Muestras</dt><dd>${H.samples.length}/${SAMPLE_CAPACITY}</dd><dt>O₂</dt><dd>${(vit.o2_kg / 1.2 * 100).toFixed(1)}%</dd><dt>Batería</dt><dd>${(vit.battery_wh / 1100 * 100).toFixed(1)}%</dd></dl>` });
   } else if (key !== "f" && H.prompt?.station) {
     const s = H.prompt.station;
     modal({ title: s.infoTitle,
@@ -337,6 +339,17 @@ async function interact(key) {
       <dl class="kv"><dt>Posición</dt><dd>${fmt.lat(point.lat)}, ${fmt.lon(point.lon)}</dd>
       <dt>Distancia</dt><dd>${fmt.m(Math.hypot(H.x - point.x, H.z - point.z))}</dd></dl>`;
     const actions = [{ label: "Cerrar" }];
+    if (point.monitor) actions.push({
+      label: "Monitor de Chaski",
+      onClick: () => {
+        const preview = document.createElement("img");
+        preview.className = "monitor-preview";
+        preview.src = point.monitor;
+        preview.alt = "Captura de Chaski";
+        data.replaceChildren(preview);
+        return true;
+      },
+    });
     if (point.kind === "astronaut") actions.push({
       label: "Hablar", cls: "btn-gold", onClick: () => {
         const speech = point.activity === "walking"
@@ -443,8 +456,16 @@ function setSos(on) {
     }
 }
 function renderHelp() {
+    const commands = currentLanguage() === "en" ? [
+      "Route to [point]", "Return to base", "Next target", "Clear route", "Status", "Describe [point]",
+      "Filter science / hazards / vehicles / samples / base / all", "Emergency stop", "Help",
+    ] : [
+      "Ruta a [punto]", "Vuelve a base (Return to base)", "Siguiente objetivo", "Borra ruta", "Estado",
+      "Info de [punto]", "Filtra ciencia / peligro / vehículos / muestras / base / todo", "Parada de emergencia", "Ayuda",
+    ];
     $("#help-body").innerHTML = `<p><b>Moverse:</b> W/S o ▲▼ avanzar/retroceder · A/D o ◀▶ girar · arrastrar para mirar.</p>
-    <p><b>E</b> usar la esclusa, recolectar, hablar o inspeccionar y reparar equipos · <b>C</b> para cambiar de cámara. En vista externa, toca la escena para volver · <b>K</b> Khipu voz · <b>H</b> ayuda. Di «ruta a» y el nombre del objetivo.</p>
+    <p><b>E</b> usar la esclusa, recolectar, hablar o inspeccionar y reparar equipos · <b>C</b> para cambiar de cámara. En vista externa, toca la escena para volver · <b>K</b> Khipu voz · <b>H</b> ayuda. Pulsa K o el botón de voz para dar una orden.</p>
+    <h3>Comandos de voz</h3><ul>${commands.map((command) => "<li>" + esc(command) + "</li>").join("")}</ul>
     <p><b>Datos:</b> MOLA regional (463 m/px), con montes, dunas y rocas sintéticos para entrenamiento local. Consumibles: Khipu (Minetti/PLSS/Rohmert). Estamina: esfuerzo acumulado con recuperación. Los puntos NASA cercanos se pueden inspeccionar desde el visor.</p>
     <p><b>Walkback:</b> límite a pie ${walkLimit} m con reserva del 25%. Recalcular no repone O₂.</p>`;
 }
