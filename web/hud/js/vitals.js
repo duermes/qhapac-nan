@@ -1,7 +1,7 @@
 import { EffortModel } from "./effort.js";
 import { api } from "/static/shared/js/api.js";
 import { $, esc } from "/static/shared/js/ui.js";
-export const SUIT = { o2_cap: 1.2, water_cap: 3.6, bat_cap: 1100 };
+export const SUIT = { o2_cap: 1.2, water_cap: 1.65, bat_cap: 1100 };
 export function createVitals() {
     return { o2_kg: SUIT.o2_cap, water_kg: SUIT.water_cap, battery_wh: SUIT.bat_cap, elapsed_s: 0, grip_min: 0, last: null, rates: null, effort: new EffortModel() };
 }

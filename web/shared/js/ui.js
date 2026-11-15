@@ -134,7 +134,7 @@ export function createDeck({ id, title, parent, x, y, width, cls = "" }) {
   return d;
 }
 
-export function modal({ title, body, actions = [] }) {
+export function modal({ title, body, actions = [], onClose }) {
   const back = document.createElement("div");
   back.className = "modal-backdrop";
   back.innerHTML = `<div class="modal panel cut" role="dialog" aria-modal="true" aria-label="${esc(title)}">
@@ -145,7 +145,12 @@ export function modal({ title, body, actions = [] }) {
   if (typeof body === "string") b.innerHTML = body; else b.appendChild(body);
   const foot = back.querySelector("footer");
   if (!actions.length) foot.remove();
-  const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
+  const close = () => {
+    if (!back.isConnected) return;
+    back.remove();
+    document.removeEventListener("keydown", onKey);
+    onClose?.();
+  };
   const onKey = (e) => { if (e.key === "Escape") close(); };
   actions.forEach((a) => {
     const btn = document.createElement("button");

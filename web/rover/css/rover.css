@@ -115,3 +115,6 @@
 .rover[data-rover-mode="navigate"] .camera-controls summary { display: none; }
 .rover[data-rover-mode="navigate"] .dpad { display: flex; gap: 6px; padding: 4px; }
 .rover[data-rover-mode="navigate"] .dpad .btn { min-width: 44px; }
+
+.rover-hazard { position: fixed; z-index: 24; inset: auto 12px 90px; width: fit-content; max-width: min(460px, calc(100% - 24px)); margin-inline: auto; padding: 8px 12px; border-color: var(--warn); color: var(--warn); }
+.rover-hazard.critical { border-color: var(--danger); color: #ffb4ad; background: var(--danger-bg); }

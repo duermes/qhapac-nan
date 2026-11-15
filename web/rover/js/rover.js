@@ -1,3 +1,4 @@
+import { translate } from "/static/shared/js/language.js";
 // Chaski — rover monitor. Uses the same Khipu planner, layers and physics as Hatun Wasi.
 // Mission telemetry and map controls are independent.
 import { api } from "/static/shared/js/api.js";
@@ -10,6 +11,7 @@ import { drawLayer, LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.j
 import { $, $$, classLegend, colocatedScience, colocatedScienceSelect, esc, modal, provBadge, scienceDetails, simBanner, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 
+const DEMO_SPEED_MULTIPLIER = 8;
 const ROVER_ID = new URLSearchParams(location.search).get("rover") || "ROVER_PR1";
 const S = {
   mode: "navigate", view: "2d", radar: false, panels: true, layer: "relief",
@@ -115,8 +117,7 @@ function centerBodyFrame() {
 function refresh() {
   map.entities = [...entities.filter((e) => e.id !== S.assetId && (S.radar || !["poi", "sample"].includes(e.kind) || S.mode !== "navigate")), roverEntity()];
   map.recordedPaths = S.layer === "recorded_traverse" ? S.recordedPaths : [];
-  map.routes = S.route ? [{ id: "route", points: S.route.points, color: "#65d8ff", width: 4,
-    segments: S.route.pnr?.show_pnr || S.route.pnr?.classification === "INDETERMINATE" ? S.route.pnr.segments : null, pnr: S.route.pnr?.pnr_point }] : [];
+  map.routes = S.route ? [{ id: "route", points: S.route.points, color: "#65d8ff", width: 4 }] : [];
   S.layerDetail?.update();
   map.layers = Object.entries(S.layers).filter(([, on]) => on).map(([id]) => ({
     id, canvas: S.layerCanvas?.[id], opacity: 0.55, visible: true, stride: LAYER_OVERVIEW_STRIDE,
@@ -155,12 +156,12 @@ function runDemoClock() {
     const moving = Boolean(turn || throttle);
     if (moving) {
       S.heading = (S.heading + turn * 50 * dt + 360) % 360;
-      const distance = S.speed * dt * 4;
+      const distance = S.speed * dt * DEMO_SPEED_MULTIPLIER;
       const point = destination(S.lat, S.lon, S.heading, distance);
       if (region.grid.contains(point.lat, point.lon)) {
         S.lat = point.lat; S.lon = point.lon;
         S.simDistance += Math.abs(distance);
-        S.simSeconds += throttle ? dt * 4 : 0;
+        S.simSeconds += throttle ? dt * DEMO_SPEED_MULTIPLIER : 0;
         S.simEnergy += Math.abs(distance) * (0.12 + Math.max(0, S.pitch) * .016 + S.slip * .1);
       }
       document.body.dataset.roverDemo = "1";
@@ -216,7 +217,11 @@ async function slowTick() {
       S.slip = t.slip; S.tractionState = t.state; S.tipover = t.tipover_risk;
     }
     const active = harness.status === "fulfilled" ? harness.value.active : [];
-    if (harness.status === "fulfilled") simBanner(harness.value.simulation);
+    if (harness.status === "fulfilled") {
+      simBanner(harness.value.simulation);
+      S.activeHazards = active.filter((event) => event.kind === "obstacle" && event.params?.lat != null)
+        .map((event) => ({ ...event.params, tier: "forbidden", name: event.params.name || "Obstáculo de contingencia", radius_m: event.params.radius_m || 400 }));
+    }
     const signature = JSON.stringify(active.map(({ id, t }) => [id, t]));
     if (S.telecomSignature !== signature) {
       S.telecom = (await layerGrid(region.key, "telecom", {}).catch(() => null))?.decoded;
@@ -232,7 +237,7 @@ async function slowTick() {
     }
     S.link = sampleTelecom(S.lat, S.lon);
     const status = await api.fsm({ battery_pct: S.battery * 100, link_margin_db: S.link,
-      slope_deg: Math.abs(pitch), emergency_stop: false, pnr_exceeded: !!S.pastPnr }).catch(() => null);
+      slope_deg: Math.abs(pitch), emergency_stop: false }).catch(() => null);
     if (status) { S.fsm = status.state; S.fsmReasons = status.reasons; }
     if (S.target && !S.planning && (S.telecomSignature !== signature ||
       S.simDistance - (S.plannedDistance || 0) > 80 || (!S.simDistance && previous !== S.battery))) {
@@ -260,15 +265,17 @@ function updatePanels() {
   if (dBase != null) {
     const min = dBase / 0.9 / 60;                  // walking time home if the rover fails
     $("#walkback").textContent = `${min.toFixed(0)} min`;
-    const limit = scenario.eva_policy?.walkback_limit_m ?? 4000;
+    const limit = scenario.eva_policy?.walkback_limit_m ?? 8000;
     $("#walkback").style.color = dBase > limit ? "var(--danger)" : dBase > 0.8 * limit ? "var(--warn)" : "";
     $("#walkback-dist").textContent = `${fmt.m(dBase)} a base${dBase > limit ? " · fuera de límite a pie" : ""}`;
   }
   $("#link").textContent = S.link == null ? "sin dato" : `${S.link.toFixed(1)} dB`;
   $("#link").style.color = S.link != null && S.link < 0 ? "var(--danger)" : "";
+  const warning = updateHazardWarning();
   const z = $("#zone");
-  z.className = `tile zone ${S.fsm === "CAUTION" ? "caution" : S.fsm === "ABORT" ? "abort" : ""}`;
-  z.firstElementChild.textContent = S.fsm === "GO" ? "ZONA SEGURA" : S.fsm === "CAUTION" ? "PRECAUCIÓN" : "ABORTAR";
+  z.className = `tile zone ${warning?.critical || S.fsm === "ABORT" ? "abort" : warning || S.fsm === "CAUTION" ? "caution" : ""}`;
+  z.firstElementChild.textContent = warning?.critical ? "ZONA PROHIBIDA" : warning ? "PRECAUCIÓN"
+    : S.fsm === "GO" ? "ZONA SEGURA" : S.fsm === "CAUTION" ? "PRECAUCIÓN" : "ABORTAR";
   $("#fsm").textContent = `[${S.fsm}]`;
   z.title = (S.fsmReasons || []).join(", ");
   const sgn = (v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}°`;
@@ -290,6 +297,28 @@ function updatePanels() {
   updateGuide();
 }
 
+function updateHazardWarning() {
+  const observed = entities.filter((point) => ["hazard", "lava_pit"].includes(point.kind))
+    .map((point) => ({ ...point, tier: "forbidden", radius_m: point.radius_m ?? point.metadata?.radius_m ?? 100 }));
+  let warning = null;
+  for (const zone of [...scenario.hazards, ...observed, ...(S.activeHazards || [])]) {
+    const distance = haversine(S.lat, S.lon, zone.lat, zone.lon) - zone.radius_m;
+    const critical = distance <= 0 && (zone.tier === 3 || zone.tier === "forbidden");
+    if (distance > (zone.warning_distance_m ?? 180)) continue;
+    if (warning && (warning.critical && !critical || warning.critical === critical && warning.distance <= distance)) continue;
+    warning = { zone, distance, critical };
+  }
+  const alert = $("#rover-hazard");
+  alert.hidden = !warning;
+  if (warning) {
+    const title = warning.critical ? "Zona prohibida" : warning.distance <= 0 ? "Zona peligrosa" : "Zona peligrosa próxima";
+    const message = `${translate(title)} · ${translate(warning.zone.name)}`;
+    alert.classList.toggle("critical", warning.critical);
+    if (alert.textContent !== message) alert.textContent = message;
+  }
+  return warning;
+}
+
 function updateGuide() {
   const t = S.target;
   if (!t) {
@@ -308,7 +337,6 @@ function updateGuide() {
     pts.forEach((p, i) => { const dd = haversine(S.lat, S.lon, p.lat, p.lon); if (dd < best) { best = dd; nextIdx = i; } });
     corridor = best;
     remaining = (pts.at(-1).distance_m - pts[nextIdx].distance_m) + best;
-    S.pastPnr = S.route.pnr?.pnr_index != null && nextIdx > S.route.pnr.pnr_index;
     const ahead = pts[Math.min(pts.length - 1, nextIdx + 4)];
     const turn = ((bearing(S.lat, S.lon, ahead.lat, ahead.lon) - S.heading + 540) % 360) - 180;
     const dirTxt = Math.abs(turn) < 10 ? "Seguir recto" : `Girar ${Math.abs(turn).toFixed(0)}° a la ${turn > 0 ? "derecha" : "izquierda"}`;
@@ -342,16 +370,16 @@ async function planTo(target, { silent, preserveOrigin } = {}) {
     let route;
     if (preserveOrigin && S.route) {
       const res = await api.replan({ region_key: region.key, current, destination: goal, route_points: S.route.points,
-        return_prefix: S.route.return_prefix || [], asset_id: S.assetId, reevaluate: true, params });
-      route = { ...S.route, points: res.route_points, metrics: res.metrics, pnr: res.pnr, return_prefix: res.return_prefix };
+        asset_id: S.assetId, reevaluate: true, live_navigation: true, params });
+      route = { ...S.route, points: res.route_points, metrics: res.metrics, emergencyExit: res.emergency_exit };
     } else {
-      const res = await api.route({ region_key: region.key, origin: current, destination: goal, params });
-      route = res.variants[0];
+      const res = await api.route({ region_key: region.key, origin: current, destination: goal, live_navigation: true, params });
+      route = { ...res.variants[0], emergencyExit: res.emergency_exit };
     }
     if (revision !== S.planRevision) return null;
     S.route = route;
     S.routeError = null;
-    S.routeStatus = route.pnr?.classification === "INDETERMINATE" ? "Retorno no concluyente" : route.pnr?.show_pnr ? "Retorno no garantizado después del PNR" : "Retorno con reserva";
+    S.routeStatus = route.emergencyExit ? "Salida de emergencia" : "";
     if (!silent) toast(`Ruta a ${target.name} · ${fmt.m(route.metrics.distance_m)}`, "safe");
     return route;
   } catch (error) {
@@ -406,11 +434,9 @@ async function onMapClick(ll, hit, force = false) {
     const target = hit ? { id: hit.id, name: hit.name, lat: hit.lat, lon: hit.lon } : { name: `${ll.lat.toFixed(4)}, ${ll.lon.toFixed(4)}`, lat: ll.lat, lon: ll.lon };
     const v = await planTo(target);
     if (v) {
-      const pnr = v.pnr?.pnr_point;
       showInspect(`Ruta a ${target.name}`, `<dl class="kv"><dt>Distancia</dt><dd>${fmt.m(v.metrics.distance_m)}</dd>
         <dt>Duración</dt><dd>${fmt.dur(v.metrics.duration_s)}</dd><dt>Energía</dt><dd>${fmt.num(v.metrics.resources.battery_wh, 0)} Wh</dd>
-        <dt>Retorno</dt><dd>${esc(S.routeStatus)}</dd>
-        ${pnr ? `<dt>PNR</dt><dd>${fmt.lat(pnr.lat)}, ${fmt.lon(pnr.lon)} · ${fmt.m(pnr.distance_m)}</dd>` : ""}</dl>`);
+        ${v.emergencyExit ? `<dt>Salida de emergencia</dt><dd>${esc(v.emergencyExit.zones.join(", "))}</dd>` : ""}</dl>`);
     }
     return;
   }

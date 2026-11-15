@@ -289,7 +289,9 @@ function toggleRoute(key) {
 }
 function syncToggles() {
   $("#show-direct").setAttribute("aria-pressed", String(visible(activeTraverse(), "showDirect")));
-  $("#show-calculated").setAttribute("aria-pressed", String(visible(activeTraverse(), "showCalc")));
+  const calculated = $("#show-calculated");
+  calculated.setAttribute("aria-pressed", String(visible(activeTraverse(), "showCalc")));
+  calculated.classList.toggle("has-pnr", Boolean(currentVariant()?.pnr?.show_pnr));
 }
 
 async function saveRoute() {
@@ -396,8 +398,8 @@ async function importRoute(e) {
 const PARAMS = [
   ["pnr_tolerance_m", "Precisión espacial PNR (m)", 1, 2000, 1, 100],
   ["pnr_max_evaluations", "Presupuesto de evaluación PNR", 8, 512, 1, 128],
-  ["max_slope_deg", "Pendiente máxima (°)", 1, 30, 0.1, null],
-  ["walkback_limit_m", "Walkback EVA (m)", 1000, 4000, 1, 4000],
+  ["max_slope_deg", "Pendiente máxima (°)", 1, 30, 0.1, 20],
+  ["walkback_limit_m", "Walkback EVA (m)", 1000, 8000, 1, 8000],
   ["reserve_fraction", "Reserva general (fracción)", 0, 0.8, 0.01, 0.25],
   ["reserve_o2_fraction", "Reserva de oxígeno (fracción)", 0, 0.8, 0.01, null],
   ["reserve_water_fraction", "Reserva de agua (fracción)", 0, 0.8, 0.01, null],
@@ -411,7 +413,7 @@ const PARAMS = [
   ["min_light_w_m2", "Insolación mínima (W/m²)", 0.1, 500, 0.1, 0.1],
   ["min_link_db", "Margen de enlace mínimo (dB)", -40, 40, 0.5, 0],
   ["max_blackout_s", "Corte de enlace máximo (s)", 0, 7200, 1, 900],
-  ["max_distance_m", "Longitud máxima (m)", 1, 500000, 1, null],
+  ["max_distance_m", "Longitud máxima (m)", 1, 32000, 1, null],
   ["w_hazard", "Peso de peligro", 0, 3, 0.1, 1],
   ["w_context", "Peso contextual", 0, 2, 0.1, 0.6],
 ];

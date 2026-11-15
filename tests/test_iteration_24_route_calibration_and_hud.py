@@ -5,8 +5,8 @@ from conftest import ROVER, EVA, BASE, DELTA, needs_mola, read
 @needs_mola
 def test_api_route_enforces_walkback_limit(client):
     near = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.470, "lon": 77.462}, "asset_id": "EVA_01"})
-    far = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.46, "lon": 77.38}, "asset_id": "EVA_01"})
-    assert near.status_code == 200 and near.json()["walkback_limit_m"] == 4000
+    far = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.46, "lon": 77.29}, "asset_id": "EVA_01"})
+    assert near.status_code == 200 and near.json()["walkback_limit_m"] == 8000
     assert far.status_code == 422 and far.json()["reason"] == "walkback_exceeded"
     tight = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.470, "lon": 77.462}, "asset_id": "EVA_01", "params": {"walkback_limit_m": 1000}})
     assert tight.status_code == 422  # ~1.4 km exceeds a 1 km policy

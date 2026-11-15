@@ -316,7 +316,7 @@ def L_survival(ctx, p):
     base = next((a for a in ctx.scenario.get("assets", []) if a.get("kind") in ("base", "habitat")), None)
     if base:
         d = distance_grid_m(ctx.terrain, base["lat"], base["lon"])
-        reach = float(p.get("walkback_m", 2000.0 if prof == "astronaut" else 15000.0))
+        reach = float(p.get("walkback_m", 8000.0 if prof == "astronaut" else 32000.0))
         dist_f = np.clip(d / reach, 0, 1.5) / 1.5
     else:
         dist_f = np.zeros(ctx.terrain.shape)

@@ -27,22 +27,25 @@ class Heap {
   }
 }
 
-function smoothLocal(world, nodes) {
-  const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-  const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
-  const passable = (a, b) => {
-    if (world.pathBlocked(a.x, a.z, b.x, b.z, 0.85)) return false;
-    const steps = Math.max(1, Math.ceil(distance(a, b) / 0.35));
-    let last = world.getSmoothHeightAt(a.x, a.z);
-    for (let i = 1; i <= steps; i++) {
-      const p = lerp(a, b, i / steps);
-      const height = world.getSmoothHeightAt(p.x, p.z);
-      if (Math.abs(height - last) > Math.tan(24 * Math.PI / 180) * distance(a, b) / steps + 0.0001) return false;
-      last = height;
-    }
-    return true;
-  };
+const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+const stepCount = (a, b) => Math.max(1, Math.ceil(distance(a, b) / 0.5));
 
+function safeEdge(world, a, b, padding) {
+  if (world.pathBlocked(a.x, a.z, b.x, b.z, padding)) return false;
+  const steps = stepCount(a, b);
+  const rise = Math.tan(world.navigationSlope * Math.PI / 180) * distance(a, b) / steps;
+  let last = world.getSmoothHeightAt(a.x, a.z);
+  for (let i = 1; i <= steps; i++) {
+    const p = lerp(a, b, i / steps);
+    const height = world.getSmoothHeightAt(p.x, p.z);
+    if (Math.abs(height - last) > rise + 1e-8) return false;
+    last = height;
+  }
+  return true;
+}
+
+function smoothLocal(world, nodes) {
   const path = [nodes[0]];
   // Round each corner locally; fall back to the verified corner when clearance is tight.
   for (let i = 1; i + 1 < nodes.length; i++) {
@@ -54,14 +57,14 @@ function smoothLocal(world, nodes) {
       curved.push(lerp(lerp(entry, b, t), lerp(b, exit, t), t));
     }
     const nominal = [path.at(-1), ...curved, c];
-    if (nominal.slice(1).every((point, j) => passable(nominal[j], point))) path.push(...curved);
+    if (nominal.slice(1).every((point, j) => safeEdge(world, nominal[j], point, 0.85))) path.push(...curved);
     else path.push(b);
   }
   path.push(nodes.at(-1));
   const dense = [path[0]];
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i];
-    const steps = Math.max(1, Math.ceil(distance(a, b) / 0.70));
+    const steps = stepCount(a, b);
     for (let j = 1; j <= steps; j++) dense.push(lerp(a, b, j / steps));
   }
   return dense;
@@ -89,13 +92,13 @@ export function localRoute(scene, start, target) {
   }
   if (!goal || target.kind === "sample" && best > 4.5) throw new Error("No hay acceso transitable al objetivo");
   let startCell = null, startDistance = Infinity;
-  for (let dx = -2; dx <= 2; dx++) {
-    for (let dz = -2; dz <= 2; dz++) {
+  for (let dx = -4; dx <= 4; dx++) {
+    for (let dz = -4; dz <= 4; dz++) {
       const cellId = encode(start.x + dx * cell, start.z + dz * cell);
       const candidate = decode(cellId);
       const distance = Math.hypot(candidate.x - start.x, candidate.z - start.z);
       if (distance < startDistance && free(candidate.x, candidate.z) &&
-          !world.pathBlocked(start.x, start.z, candidate.x, candidate.z)) {
+          safeEdge(world, start, candidate, 0.65)) {
         startCell = cellId; startDistance = distance;
       }
     }
@@ -119,12 +122,10 @@ export function localRoute(scene, start, target) {
     const p = decode(current.id);
     for (const [dx, dz] of dirs) {
       const x = p.x + dx * cell, z = p.z + dz * cell;
-      if (!free(x, z) || world.pathBlocked(p.x, p.z, x, z, 0.9)) continue;
+      if (!free(x, z) || !safeEdge(world, p, { x, z }, 0.9)) continue;
       if (dx && dz && (!free(x, p.z) || !free(p.x, z))) continue;
       const id = encode(x, z), distance = Math.hypot(dx, dz) * cell;
       const grade = (height(id) - height(current.id)) / distance;
-      const slope = Math.atan(grade) * 180 / Math.PI;
-      if (Math.abs(slope) > 24) continue;
       const g = current.g + distance * (1 + Math.max(0, grade) * 9 + Math.abs(grade) * 2);
       if (g >= scores[id]) continue;
       scores[id] = g; parents[id] = current.id;
@@ -136,7 +137,7 @@ export function localRoute(scene, start, target) {
   for (let id = goalId; id !== -1; id = parents[id]) nodes.push(decode(id));
   nodes.reverse();
   if (startDistance > 0.001) nodes.unshift({ x: start.x, z: start.z });
-  return (nodes.length > 2 ? smoothLocal(world, nodes) : nodes).map(p => ({
+  return (nodes.length > 1 ? smoothLocal(world, nodes) : nodes).map(p => ({
     ...scene.toLatLon(p.x, p.z), elevation_m: scene.surfaceElevation(p.x, p.z),
   }));
 }

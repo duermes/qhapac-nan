@@ -12,12 +12,12 @@ from pathlib import Path
 import numpy as np
 
 from khipu import exporters, inspection, navigation, voice
-from khipu.costmap import CostParams, HazardZone, TIER_FORBIDDEN, compute_costmap, distance_grid_m
+from khipu.costmap import PROFILE_DEFAULTS, CostParams, HazardZone, TIER_FORBIDDEN, compute_costmap
 from khipu.domain import MOBILE_KINDS, Provenance, make_asset
 from khipu.geodesy import haversine_m
 from khipu.layers import LayerContext, LayerDef, SnapshotManager, build_catalog, realtime_params
 from khipu.operations import DemoHarness, MissionFSM, PeerSwarm
-from khipu.resources import EVA_WALKBACK_LIMIT_M, PNR_DEFAULTS, ResourceLedger, assess_route, route_metrics, segment_cost
+from khipu.resources import EVA_DEMO_WATER_CAPACITY_KG, EVA_WALKBACK_LIMIT_M, ROVER_DEMO_RANGE_M, PNR_DEFAULTS, ResourceLedger, assess_route, route_metrics, segment_cost
 from khipu.router import RouteInfeasible, RouterConfig, direct_route, path_hits_obstacle, plan
 from khipu.terrain import TerrainContext
 from khipu_data.gemini import GeminiVoiceClient, GeminiVoiceError
@@ -162,10 +162,12 @@ class Engine:
 
     def costmap(self, region_key: str, profile: str = "rover", max_slope_deg: float | None = None,
                 weights: dict | None = None, extra_hazards: list[dict] | None = None, walkback: dict | None = None,
-                restrictions: dict | None = None, link: np.ndarray | None = None):
+                restrictions: dict | None = None, link: np.ndarray | None = None,
+                hazard_zones: list[HazardZone] | None = None):
         t = self.terrain(region_key)
         w = weights or {}
-        cp = CostParams(profile=profile, max_slope_deg=max_slope_deg, hazard_zones=self.hazards(extra_hazards), restrictions=restrictions or {},
+        cp = CostParams(profile=profile, max_slope_deg=max_slope_deg, hazard_zones=self.hazards(extra_hazards) if hazard_zones is None else hazard_zones,
+                        restrictions=restrictions or {},
                         w_slope=w.get("slope", 1.0), w_roughness=w.get("roughness", 0.5),
                         w_hazard=w.get("hazard", 1.0), w_context=w.get("context", 0.6), w_science=w.get("science", 0.0))
         if w.get("context", 0.6) > 0:
@@ -182,7 +184,7 @@ class Engine:
             cp.walkback_radius_m = walkback["radius_m"]
         return t, compute_costmap(t, cp)
 
-    def operational_costmap(self, region, profile, params, session_id=None, asset=None):
+    def operational_costmap(self, region, profile, params, session_id=None, asset=None, ignore_zones=()):
         mgr = self.manager(region)
         t = mgr.ctx.terrain
         overlay = self.harness.apply({"tau": params.get("tau", 0.5), "link_margin_db": 0, "obstacles": []})
@@ -202,12 +204,11 @@ class Engine:
         maximum = params.get("max_temperature_c", 45)
         if minimum >= maximum:
             raise RouteInfeasible("temperature_range", "La temperatura mínima debe ser inferior a la máxima.")
-        # Cover subpixel exclusions and avoid crossing their boundaries when shortcutting.
-        padding = 0.5 * math.hypot(float(max(t.geometry.dx_rows())), t.geometry.dy_m)
+        zones = [zone for zone in self.hazards(obstacles) if zone not in ignore_zones]
         exclusions = np.zeros(t.shape, dtype=bool)
-        for zone in self.hazards(obstacles):
+        for zone in zones:
             if zone.tier == TIER_FORBIDDEN:
-                exclusions |= distance_grid_m(t, zone.lat, zone.lon) <= zone.radius_m + padding
+                exclusions |= navigation.exclusion_mask(t, zone)
         restrictions = {
             "hazard": exclusions,
             "temperature": ~np.isfinite(temp) | (temp < minimum) | (temp > maximum),
@@ -216,17 +217,18 @@ class Engine:
         }
         asset_limit = (asset or {}).get("max_slope_deg")
         configured_limit = params.get("max_slope_deg")
-        slope = min((limit for limit in (configured_limit, asset_limit, 30.0) if limit is not None)) if (
-            configured_limit is not None or asset_limit is not None) else None
+        default_limit = PROFILE_DEFAULTS[profile]["max_slope_deg"]
+        slope = min(configured_limit if configured_limit is not None else default_limit,
+                    asset_limit if asset_limit is not None else 45.0)
         return (*self.costmap(region, profile, slope, params.get("weights"), obstacles,
-                              restrictions=restrictions, link=link), link)
+                              restrictions=restrictions, link=link, hazard_zones=zones), link)
 
     def route_inventory(self, profile, params, asset, telemetry=None):
         settings = PNR_DEFAULTS[profile]
         main = settings["resource"]
         capacities = {main: settings["capacity"]}
         if profile == "astronaut":
-            capacities.update(water_kg=3.6, battery_wh=1100.0)
+            capacities.update(water_kg=EVA_DEMO_WATER_CAPACITY_KG, battery_wh=1100.0)
         declared = (asset or {}).get("resources") or {}
         readings = {**declared, **(telemetry or {})}
         if asset and not asset.get("virtual"):
@@ -236,8 +238,11 @@ class Engine:
             for key in capacities.keys() - {main}:
                 if declared.get(key, 0) > 0:
                     capacities[key] = declared[key]
-        elif params.get("resources_capacity") is not None:
-            capacities[main] = params["resources_capacity"]
+        else:
+            if params.get("resources_capacity") is not None:
+                capacities[main] = params["resources_capacity"]
+            for key in capacities.keys() - {main}:
+                capacities[key] = max(capacities[key], declared.get(key, 0))
         requested = params.get("resources_available")
         if requested is not None:
             readings[main] = min(readings.get(main, requested), requested)
@@ -245,7 +250,7 @@ class Engine:
 
     def evaluate_corridor(self, terrain, points, profile, params, asset, link, speed,
                           telemetry=None, return_prefix=None, manager=None, costmap=None, region=None,
-                          weather_cells=None):
+                          weather_cells=None, verify_return=True):
         inventory = self.route_inventory(profile, params, asset, telemetry)
         default = params.get("reserve_fraction")
         reserve = {}
@@ -255,6 +260,8 @@ class Engine:
             reserve[resource] = override if override is not None else default if default is not None else 0.25
         outbound = points
         points, pnr = assess_route(outbound, profile, inventory, reserve, speed, return_prefix)
+        if not verify_return:
+            points = outbound
         metrics = route_metrics(outbound, profile, speed)
         loss = navigation.blocked_link(terrain, outbound, link, params.get("min_link_db", 0), profile, speed)
         metrics["max_blackout_s"] = loss
@@ -267,7 +274,7 @@ class Engine:
             forecast = navigation.TravelForecast(manager, link, {**params, "tau": tau}, profile, speed,
                                                  costmap.params.restrictions if costmap else None)
             issues.extend(forecast.violations(outbound, telecom=False, weather_cells=weather_cells))
-            if (not issues and pnr["status"] != "infeasible"
+            if (verify_return and not issues and pnr["status"] != "infeasible"
                     and (params.get("max_distance_m") is None or metrics["distance_m"] <= params["max_distance_m"])
                     and loss <= params.get("max_blackout_s", 900)):
                 return_maps = {}
@@ -318,22 +325,34 @@ class Engine:
         result = {"feasible": True, "region_key": region, "profile": profile,
                   "asset_id": asset["id"] if profile and asset else None, "static_origin": profile is None,
                   "direct": {"distance_m": distance, "points": [{"lat": lat, "lon": lon} for lat, lon in (o, d)]},
-                  "variants": [], "recommended": None, "operational_route": True, "route_model": 3, "costmap_version": self.swarm.costmap_version}
+                  "variants": [], "recommended": None, "operational_route": True, "route_model": 4, "costmap_version": self.swarm.costmap_version}
         if profile is None:
             return result
 
+        live_navigation = profile == "rover" and req.get("live_navigation", False)
         legs = [o, *((float(w["lat"]), float(w["lon"])) for w in req.get("waypoints", [])), d]
         t, cm, link = self.operational_costmap(region, profile, params, session_id, asset)
         roles = ["origen", *(f"waypoint {i}" for i in range(1, len(legs) - 1)), "destino"]
-        navigation.check_endpoints(t, cm, zip(legs, roles))
+        escape_zones = [zone for zone in cm.params.hazard_zones if live_navigation
+                        and zone.tier == TIER_FORBIDDEN and haversine_m(*o, zone.lat, zone.lon) <= zone.radius_m]
+        escape_map = cm
+        escape_masks = []
+        if escape_zones:
+            _, escape_map, _ = self.operational_costmap(region, profile, params, session_id, asset,
+                                                        ignore_zones=escape_zones)
+            escape_masks = [navigation.exclusion_mask(t, zone) for zone in escape_zones]
+            navigation.check_endpoints(t, escape_map, [(o, roles[0])])
+            navigation.check_endpoints(t, cm, zip(legs[1:], roles[1:]))
+        else:
+            navigation.check_endpoints(t, cm, zip(legs, roles))
 
         walk_limit = (params.get("walkback_limit_m") or self.eva_walkback_limit()
                       if profile == "astronaut" else None)
         if walk_limit and max(haversine_m(*o, *point) for point in legs) > walk_limit:
             raise RouteInfeasible("walkback_exceeded", f"Un punto excede el radio de retorno a pie de {walk_limit:.0f} m.",
                                   walkback_limit_m=walk_limit, reasons=[{"code": "walkback", "detail": f"Radio de retorno a pie: {walk_limit:.0f} m."}])
-        if walk_limit:
-            params = {**params, "max_distance_m": min(walk_limit, params.get("max_distance_m") or walk_limit)}
+        distance_limit = walk_limit if profile == "astronaut" else ROVER_DEMO_RANGE_M
+        params = {**params, "max_distance_m": min(distance_limit, params.get("max_distance_m") or distance_limit)}
         asset_speed = (asset or {}).get("speed_mps")
         speed = params.get("speed_mps") or asset_speed
         if speed is not None and asset_speed is not None:
@@ -344,14 +363,19 @@ class Engine:
 
         def calculate(costmap, edge_cost=None, smooth=True, collect_weather=False):
             points, controls = [], []
-            for a, b in zip(legs, legs[1:]):
+            for i, (a, b) in enumerate(zip(legs, legs[1:])):
                 cfg = RouterConfig(max_step_slope_deg=cm.params.slope_limit(), edge_cost=edge_cost, smooth=smooth)
-                leg = plan(t, costmap, a, b, cfg)
+                current_map = escape_map if i == 0 and costmap is cm else costmap
+                leg = plan(t, current_map, a, b, cfg)
+                if i == 0 and escape_masks:
+                    navigation.check_escape(t, leg["points"], escape_masks)
                 points.extend(leg["points"][1:] if points else leg["points"])
                 controls.extend(leg["control_points"])
             return self.evaluate_corridor(t, points, profile, params, asset, link, speed, return_prefix=prefix,
-                                          manager=self.manager(region), costmap=costmap, region=region,
-                                          weather_cells=weather_cells if collect_weather else None), controls
+                                          manager=self.manager(region), costmap=escape_map if escape_masks else costmap,
+                                          region=region,
+                                          weather_cells=weather_cells if collect_weather else None,
+                                          verify_return=not live_navigation), controls
 
         try:
             (points, metrics, pnr, issues), controls = calculate(cm, collect_weather=True)
@@ -396,11 +420,12 @@ class Engine:
                 navigation.forbid(issues)
 
         variant = {"variant": "balanced", "label": "Ruta de travesía", "points": points, "metrics": metrics,
-                   "control_points": controls, "notes": [], "pnr": pnr,
+                   "control_points": controls, "notes": [], "pnr": None if live_navigation else pnr,
                    "asset_metrics": {"profile": profile, "resources": metrics["resources"], "duration_s": metrics["duration_s"]}}
         direct = direct_route(t, cm, o, d)
         return {**result, "variants": [variant], "recommended": variant["variant"], "direct": direct,
-                "slope_limit_deg": cm.params.slope_limit(), "walkback_limit_m": walk_limit}
+                "slope_limit_deg": cm.params.slope_limit(), "walkback_limit_m": walk_limit,
+                "emergency_exit": {"zones": [zone.name or zone.id for zone in escape_zones]} if escape_zones else None}
 
     def dynamic_replan(self, req: dict) -> dict:
         region = req.get("region_key") or self.default_region()
@@ -414,8 +439,9 @@ class Engine:
             return {"status": "nominal", "replanned": False, "reason": "El corredor actual no cruza obstáculos.",
                     "route_points": pts}
         current = req["current"]
-        prefix = list(req.get("return_prefix") or [])
-        if pts and all(p.get("elevation_m") is not None for p in pts):
+        live_navigation = req.get("live_navigation", False)
+        prefix = [] if live_navigation else list(req.get("return_prefix") or [])
+        if not live_navigation and pts and all(p.get("elevation_m") is not None for p in pts):
             nearest = min(range(len(pts)), key=lambda i: haversine_m(
                 current["lat"], current["lon"], pts[i]["lat"], pts[i]["lon"]))
             prefix.extend(pts[:nearest + 1])
@@ -423,7 +449,7 @@ class Engine:
             if elevation is not None:
                 prefix.append({**current, "elevation_m": elevation})
         sub = {"region_key": region, "session_id": req.get("session_id"), "origin": current,
-               "return_prefix": prefix, "destination": req["destination"],
+               "return_prefix": prefix, "destination": req["destination"], "live_navigation": live_navigation,
                "profile": req.get("profile", "rover"), "asset_id": req.get("asset_id"), "variants": False,
                "params": {**(req.get("params") or {}), "obstacles": [{**o, "tier": "forbidden"} for o in obstacles]}}
         res = self.plan_route(sub)
@@ -433,7 +459,8 @@ class Engine:
         v = res["variants"][0]
         still = [ob for ob in obstacles if path_hits_obstacle(v["points"], ob)]
         return {"status": "compromised", "replanned": True, "obstacles": obstacles, "route_points": v["points"],
-                "metrics": v["metrics"], "pnr": v["pnr"], "return_prefix": prefix, "evasion_ok": not still,
+                "metrics": v["metrics"], "pnr": v["pnr"], "return_prefix": prefix,
+                "emergency_exit": res["emergency_exit"], "evasion_ok": not still or bool(res["emergency_exit"]),
                 "reason": ("Se replanificó con las condiciones actuales." if not compromised else
                            f"{len(compromised)} obstáculo(s) en el corredor; se replanificó evitando la zona.")}
 

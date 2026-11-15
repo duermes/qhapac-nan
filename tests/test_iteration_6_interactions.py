@@ -44,7 +44,7 @@ def test_3d_proportional_scaling_and_synchronization():
 
 
 def test_dynamic_risk_evaluation_skips_new_point_creation():
-    assert 'if (!hit && !ctx.cur.addMode) inspectRisk(ll)' in read("console/js/decks.js")
+    assert 'if (!hit && !adding) inspectRisk(ll)' in read("console/js/decks.js")
     assert 'if (on) ctx.decks?.risk.close()' in read("console/js/popover.js")
 
 

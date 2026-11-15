@@ -51,8 +51,8 @@ def test_planning_rejects_fatal_slope_crest(client):
 
 @needs_mola
 def test_planning_rejects_exceeded_walkback_distance(client):
-    r = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.46, "lon": 77.36}, "profile": "astronaut"})
-    assert r.status_code == 422 and r.json()["walkback_limit_m"] == 4000
+    r = client.post("/api/route", json={"origin": EVA, "destination": {"lat": 18.46, "lon": 77.30}, "profile": "astronaut"})
+    assert r.status_code == 422 and r.json()["walkback_limit_m"] == 8000
 
 
 def test_asset_registry_and_decoupled_icons_and_3d_manifest():

@@ -16,7 +16,7 @@ TIER_FREE, TIER_CAUTION, TIER_HIGH, TIER_FORBIDDEN = 0, 1, 2, 3
 
 PROFILE_DEFAULTS = {
     "rover": {"max_slope_deg": 20.0, "caution_slope_deg": 12.0, "max_relief_m": 260.0},
-    "astronaut": {"max_slope_deg": 25.0, "caution_slope_deg": 15.0, "max_relief_m": 220.0},
+    "astronaut": {"max_slope_deg": 20.0, "caution_slope_deg": 15.0, "max_relief_m": 220.0},
 }
 
 # Symmetric coupling between normalised factors

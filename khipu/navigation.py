@@ -6,11 +6,11 @@ from dataclasses import replace
 
 import numpy as np
 
-from .costmap import TIER_FORBIDDEN
+from .costmap import TIER_FORBIDDEN, distance_grid_m
 from .geodesy import haversine_m
 from .resources import route_metrics, route_segments, segment_cost
 from .physics.environment import SOL_HOURS
-from .router import RouteInfeasible, latlon_to_cell, segment_is_valid
+from .router import RouteInfeasible, latlon_to_cell, segment_is_valid, segment_samples
 
 RESTRICTIONS = {
     "hazard": "Zona prohibida u obstáculo físico",
@@ -66,6 +66,25 @@ def check_endpoints(terrain, costmap, endpoints):
         first = issues[0]
         role = first["role"]
         raise RouteInfeasible(f"{role}_{first['code']}", f"Punto de {role} inviable. {first['detail']}", reasons=issues)
+
+
+def exclusion_mask(terrain, zone):
+    padding = 0.5 * np.hypot(max(terrain.geometry.dx_rows()), terrain.geometry.dy_m)
+    return distance_grid_m(terrain, zone.lat, zone.lon) <= zone.radius_m + padding
+
+
+def check_escape(terrain, points, masks):
+    """An exclusion that contains the origin may only be left once."""
+    vertices = [terrain.geometry.latlon_to_rc(p["lat"], p["lon"]) for p in points]
+    left = [False] * len(masks)
+    for a, b in zip(vertices, vertices[1:]):
+        for r, c in segment_samples(a, b):
+            row = min(max(round(r), 0), terrain.shape[0] - 1)
+            col = min(max(round(c), 0), terrain.shape[1] - 1)
+            for i, mask in enumerate(masks):
+                if left[i] and mask[row, col]:
+                    forbid([issue("hazard", "La salida de emergencia volvería a entrar en la zona prohibida.")])
+                left[i] |= not mask[row, col]
 
 
 def blocked_link(terrain, points, link, threshold, profile, speed):
@@ -236,16 +255,20 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
                 "limiting": limiting, "consumed": consumed, "arrival_time_s": spent["duration_s"],
                 "remaining": {key: available - spent["resources"].get(key, 0) for key, (available, _) in inventory.items()}}
 
+    tolerance = forecast.params.get("pnr_tolerance_m", 100)
+    # Sample at fixed distances along the corridor so adding a farther goal
+    # doesn't shift an otherwise identical return boundary.
+    stations = (i * tolerance for i in range(1, int(distances[-1] / tolerance) + 1))
     analysis = search_pnr(distances[-1], evaluate,
-                          tolerance=forecast.params.get("pnr_tolerance_m", 100),
+                          tolerance=tolerance,
                           max_queries=forecast.params.get("pnr_max_evaluations", 128),
-                          deadline=time.monotonic() + 8.0, critical_points=distances)
+                          deadline=time.monotonic() + 15.0, critical_points=stations)
     status = analysis["analysis_status"]
     pnr.update({key: value for key, value in analysis.items() if key not in ("sample", "distance_m")})
     pnr.update(show_pnr=False, pnr_index=None, pnr_point=None, return_reasons=[],
                status="indeterminate" if status == "INDETERMINATE" else "round_trip_safe")
     if status == "PNR_FOUND":
-        distance = analysis["distance_m"]
+        distance = analysis["verified_until_m"]
         i, marker = at(distance)
         index = i + 1 if distance > distances[i] + 1e-8 else i
         if index == i + 1 and abs(distance - distances[i + 1]) > 1e-8:
@@ -255,7 +278,7 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
                    pnr_point={key: points[index][key] for key in ("lat", "lon", "elevation_m", "distance_m")},
                    return_reasons=sample["reasons"], limiting_resource=sample["limiting"],
                    return_state={key: sample[key] for key in ("margins", "remaining", "arrival_time_s", "consumed")},
-                   boundary_interval_m=[max(0, distance - analysis["tolerance_m"]), distance])
+                   boundary_interval_m=[distance, analysis["distance_m"]])
     elif status == "NO_PNR_VERIFIED":
         sample = evaluate(distances[-1])
         pnr.update(round_trip_margin=sample["margins"][sample["limiting"]],
@@ -265,6 +288,6 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
         pnr["asymmetry"] = pnr["return_total"] - pnr["outbound_total"]
     pnr["segments"] = [{"from": i, "to": i + 1,
                          "state": "no_return" if pnr["show_pnr"] and i >= pnr["pnr_index"]
-                         else "unverified" if status == "INDETERMINATE" else "safe"}
+                         else "unverified" if status == "INDETERMINATE" and points[i + 1]["distance_m"] > analysis["verified_until_m"] else "safe"}
                         for i in range(len(points) - 1)]
     return points, pnr

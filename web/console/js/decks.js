@@ -35,7 +35,7 @@ export async function initDecks(c) {
   ctx.on("session", async () => { await restoreLayers(); renderLayers(); renderLegend(); });
   ctx.on("entities", () => { if (!legend.hidden) renderLegend(); });
   ctx.on("route", ({ traverse }) => { if (!metrics.hidden) renderMetrics(traverse); if (!nearby.hidden) { nearby.variant = null; renderNearby(); } });
-  ctx.on("mapclick", ({ ll, hit }) => { if (!hit && !ctx.cur.addMode) inspectRisk(ll); });
+  ctx.on("mapclick", ({ ll, hit, adding }) => { if (!hit && !adding) inspectRisk(ll); });
   document.addEventListener("qn:icons", () => { if (!legend.hidden) renderLegend(); });
   await restoreLayers();
 }
@@ -49,7 +49,7 @@ const CONTROLS = {
   max_slope_deg: ["Pendiente límite (°)", 1, 45, 0.5, 20],
   receiver_height_m: ["Altura del receptor (m)", 0.1, 20, 0.1, 2],
   link_margin_offset_db: ["Pérdida adicional del enlace (dB)", -40, 40, 0.5, 0],
-  walkback_m: ["Alcance desde la base (m)", 100, 50000, 100, 2000],
+  walkback_m: ["Alcance desde la base (m)", 100, 50000, 100, 8000],
   helio_au: ["Distancia al Sol (UA)", 1.3, 1.7, 0.01, 1.52],
   science_radius_scale: ["Radio de influencia científica (factor)", 0.1, 5, 0.1, 1],
   hazard_weight: ["Peso de zonas de peligro", 0, 5, 0.1, 1],
@@ -97,6 +97,12 @@ export async function setLayer(id, visible) {
   L.visible = visible ?? !L.visible;
   if (L.visible) {
     s.activeLayer = id;
+    s.eyes.analyze = true;
+    const eye = document.querySelector('[data-eye="analyze"]');
+    if (eye) {
+      eye.setAttribute("aria-pressed", "true");
+      eye.innerHTML = icon("eye");
+    }
     try { await ensureLayer(id); }
     catch (error) { L.visible = false; toast(error.message, "warn"); }
   }
@@ -142,7 +148,7 @@ function layerControl(def, layer, key) {
       <option value="rover">Rover</option><option value="astronaut" ${layer.profile === "astronaut" ? "selected" : ""}>Astronauta</option></select>`;
   }
   const [label, min, max, step, fallback] = CONTROLS[key];
-  const nominal = key === "walkback_m" && def.id === "survival_rover" ? 15000
+  const nominal = key === "walkback_m" && def.id === "survival_rover" ? 32000
     : key === "max_slope_deg" && (layer.profile === "astronaut" || def.id === "survival_astronaut") ? 25 : fallback;
   const value = layer[key] ?? (key === "ltst_h" ? ctx.realtime?.ltst_h ?? nominal : nominal);
   return `<label for="${id}">${label}${key === "ltst_h" && layer.realtime !== false ? " · tiempo real" : ""}</label>
@@ -161,9 +167,11 @@ function renderLayers() {
   deck.body.innerHTML = `<div class="layer-top">
       <span class="badge ${session.eyes.analyze ? "live" : "unavailable"}">${session.eyes.analyze ? "Capas habilitadas" : "Capas ocultas en el mapa"}</span>
       <button class="btn" id="rt-restore" ${anyTemporal ? "" : "disabled"}>${icon("reset")} Tiempo real</button></div>`
-    + `<div class="layer-category-filter"><label class="label" for="layer-category">Categorías de capas</label>
+    + `<p id="active-layer-badge" class="layer-inputs">${esc(ctx.catalog[session.activeLayer]?.name || "Relieve MOLA sombreado")} · ${provBadge(ctx.catalog[session.activeLayer]?.provenance || "derived_from_nasa")}</p>
+    <p class="layer-inputs">Fuentes: NASA PDS (MOLA y Perseverance), NASA/JPL Mars Trek, USGS SIM 3464. NASA Open APIs: APOD e InSight.</p>
+    <div class="layer-category-filter"><label class="label" for="layer-category">Categorías de capas</label>
        <select class="select" id="layer-category"><option value="all">Todas las categorías</option>${Object.keys(cats).map(category=>`<option value="${esc(category)}" ${deck.category===category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select>
-       <button class="btn" data-category-visibility="show">Mostrar categoría</button><button class="btn" data-category-visibility="hide">Ocultar categoría</button></div>`
+       </div>`
     + Object.entries(cats).filter(([category])=>!deck.category || deck.category==="all" || category===deck.category).map(([category, defs]) => `<div class="kicker layer-category">${esc(category)}</div>` + defs.map((def) => {
       const layer = session.layers[def.id] || {};
       const ramp = LEGEND_STOPS(def.colormap).join(",");
@@ -188,18 +196,13 @@ function renderLayers() {
       </div>`;
     }).join("")).join("");
   $("#layer-category", deck.body).addEventListener("change", event=>{ deck.category=event.target.value; renderLayers(); });
-  deck.body.querySelectorAll("[data-category-visibility]").forEach(button=>button.onclick=async()=>{
-    const visible=button.dataset.categoryVisibility==="show";
-    const definitions=Object.values(ctx.catalog).filter(def=>def.available && (!deck.category || deck.category==="all" || def.category===deck.category));
-    button.disabled=true;
-    for (const def of definitions) await setLayer(def.id,visible);
-  });
+
   $("#rt-restore", deck.body)?.addEventListener("click", restoreRealtime);
   $$("[data-layer]", deck.body).forEach((row) => {
     const id = row.dataset.layer;
     const toggle = row.querySelector("[data-toggle]");
     toggle.addEventListener("click", () => setLayer(id));
-    const options = row.querySelector("details");
+    const options = row.querySelector(".layer-settings");
     if (!options) return;
     options.addEventListener("toggle", () => {
       const layer = (session.layers[id] ||= { visible: false, opacity: LAYER_DEFAULT_OPACITY });
@@ -322,19 +325,23 @@ function renderMetrics(t) {
 
 // ------------------------------------------------------------------ risk inspector (planning mode only)
 async function inspectRisk(ll) {
+  if (ctx.cur.mode !== "plan" || ctx.cur.addMode) return;
+  const session = ctx.cur;
   const deck = ctx.decks.risk;
+  const request = deck.riskRequest = Symbol();
+  const current = () => deck.riskRequest === request && ctx.cur === session && !ctx.cur.addMode && !deck.hidden;
   deck.open();
   deck.body.innerHTML = `<div class="empty-state">Evaluando ${ll.lat.toFixed(4)}, ${ll.lon.toFixed(4)}…</div>`;
   const L = Object.values(ctx.cur.layers).find((x) => x.realtime === false && x.ltst_h != null);
   try {
     const r = await api.risk({ lat: ll.lat, lon: ll.lon, region_key: ctx.region.key, profile: "rover", ltst_h: L?.ltst_h });
+    if (!current()) return;
     if (!r.inside || r.no_data) { deck.body.innerHTML = `<div class="empty-state">${esc(r.message)}</div>`; return; }
-    if (ctx.cur.addMode || deck.hidden) return;
     deck.body.innerHTML = `<dl class="kv"><dt>Posición</dt><dd>${r.lat.toFixed(4)}°N ${r.lon.toFixed(4)}°E</dd><dt>Elevación</dt><dd>${fmt.num(r.elevation_m, 0)} m</dd>
       <dt>Nivel</dt><dd class="lvl-${esc(r.tier_name)}">${esc(r.tier_name)}</dd><dt>Límite (rover)</dt><dd>${r.slope_limit_deg}°</dd></dl><hr class="joint"/>
       <div class="risk-list">${r.factors.map((f) => `<div class="risk-item"><span>${esc(f.label)} ${provBadge(f.source)}</span><span class="lvl lvl-${esc(f.level)}">${esc(f.level)}</span>
         <span class="mono dim" style="grid-column:1/-1">${f.value == null ? "sin dato" : `${f.value} ${esc(f.units)}`}${f.note ? " · " + esc(f.note) : ""}</span></div>`).join("")}</div>`;
-  } catch (e) { deck.body.innerHTML = `<div class="alert-card">${esc(e.message)}</div>`; }
+  } catch (e) { if (current()) deck.body.innerHTML = `<div class="alert-card">${esc(e.message)}</div>`; }
 }
 
 // ------------------------------------------------------------------ nearby POIs

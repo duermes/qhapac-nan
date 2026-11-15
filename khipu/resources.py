@@ -14,7 +14,9 @@ from .physics import terramechanics as tm
 
 ROVER = tm.Rover()
 ROVER_DEMO_CAPACITY_WH = 120_000.0
-EVA_WALKBACK_LIMIT_M = 4_000.0
+EVA_WALKBACK_LIMIT_M = 8_000.0
+EVA_DEMO_WATER_CAPACITY_KG = 1.65
+ROVER_DEMO_RANGE_M = 32_000.0
 
 
 @lru_cache(maxsize=180)

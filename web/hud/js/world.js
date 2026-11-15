@@ -2,10 +2,11 @@ import { translate } from "/static/shared/js/language.js";
 import * as THREE from "three";
 import { AssetRegistry, HUD_MANIFEST } from "./world-assets.js";
 export class Terrain3D {
-    constructor(scene, camera, presetKey = 'JEZERO_MARS', surfaceSampler = () => 0) {
+    constructor(scene, camera, presetKey = 'JEZERO_MARS', surfaceSampler = () => 0, training = {}) {
         this.scene = scene;
         this.surfaceSampler = surfaceSampler;
         this.seed = 713;
+        this.navigationSlope = training.local_max_slope_deg ?? 24;
         this.camera = camera;
         this.presetKey = presetKey;
         this.preset = AssetRegistry.getHudPreset(presetKey);
@@ -30,6 +31,7 @@ export class Terrain3D {
         this.initIrregularRocksWithColliders();
         this.initMineralSamples();
         this.initColonyAssets();
+        this.initTrainingSites(training);
         this.initBaseHabitatInterior();
         this.initDustParticles();
         this.prepareSamples();
@@ -48,14 +50,49 @@ export class Terrain3D {
                 const blocked = this.colliders.some(c => Math.hypot(sample.x - c.x, sample.z - c.z) < c.radius + 2.5);
                 if (!blocked)
                     break;
-                sample.x = (this.random() - 0.5) * 250;
-                sample.z = (this.random() - 0.5) * 250;
+                if (sample.name === "Depósito de hielo") {
+                    const angle = attempt * 2.39996;
+                    sample.x += Math.cos(angle);
+                    sample.z += Math.sin(angle);
+                } else {
+                    sample.x = (this.random() - 0.5) * 250;
+                    sample.z = (this.random() - 0.5) * 250;
+                }
             }
             sample.id = 'EVA_SAMPLE_' + String(index + 1).padStart(2, '0');
             sample.y = this.getSmoothHeightAt(sample.x, sample.z) + 0.35;
             sample.mesh.position.set(sample.x, sample.y, sample.z);
             sample.light.position.set(sample.x, sample.y + 0.5, sample.z);
         });
+    }
+    initTrainingSites({ ice_site: ice, lava_tubes: lava }) {
+        if (lava) {
+            const y = this.getSmoothHeightAt(lava.x, lava.z);
+            const tube = new THREE.Mesh(new THREE.TorusGeometry(3.3, 0.85, 8, 22),
+                new THREE.MeshStandardMaterial({ color: 0x422c26, roughness: 1 }));
+            const mouth = new THREE.Mesh(new THREE.CircleGeometry(2.5, 24),
+                new THREE.MeshBasicMaterial({ color: 0x160c0a, side: THREE.DoubleSide }));
+            tube.position.set(lava.x, y + 1.5, lava.z);
+            mouth.position.copy(tube.position);
+            this.scene.add(tube, mouth);
+            this.colliders.push({ ...lava, radius: lava.radius_m });
+            this.pois.push({ ...lava, type: "hazard", tag: "RISK", description: "Tubos de lava inestables. Mantén distancia." });
+        }
+        if (ice) {
+            const sample = this.collectibleSamples.find((item) => item.type === "ice");
+            Object.assign(sample, ice, { name: "Depósito de hielo", yield: "Hielo de subsuelo" });
+            const iceMat = new THREE.MeshStandardMaterial({ color: 0x9bddf5, roughness: 0.35, emissive: 0x284c61 });
+            const crystal = new THREE.OctahedronGeometry(0.7);
+            for (let i = 0; i < 12; i++) {
+                const angle = i * Math.PI / 6;
+                const x = ice.x + Math.cos(angle) * (2 + i % 3);
+                const z = ice.z + Math.sin(angle) * (2 + i % 3);
+                const shard = new THREE.Mesh(crystal, iceMat);
+                shard.scale.set(1 + (i % 3) / 2, 0.45 + i % 2, 0.8);
+                shard.position.set(x, this.getSmoothHeightAt(x, z) + 0.35, z);
+                this.scene.add(shard);
+            }
+        }
     }
     createMultiLayerMarsTexture() {
         const canvas = document.createElement('canvas');
@@ -282,10 +319,10 @@ export class Terrain3D {
     }
     initMineralSamples() {
         const sampleTypes = [
-            { name: "Nódulo de Sílice Hidratada", color: 0x00e5ff, yield: "Sílice · muestra sintética", type: "silica" },
-            { name: "Cristal de Carbonato Fósil", color: 0x00e676, yield: "Carbonato · muestra sintética", type: "carbonate" },
-            { name: "Hielo de Subsuelo Clastificado", color: 0x80d8ff, yield: "Hielo · muestra sintética", type: "ice" },
-            { name: "Esferulita de Hematita (Blueberry)", color: 0xffab40, yield: "Hematita · muestra sintética", type: "hematite" }
+            { name: "Nódulo de Sílice Hidratada", color: 0x00e5ff, yield: "Sílice", type: "silica" },
+            { name: "Cristal de Carbonato Fósil", color: 0x00e676, yield: "Carbonato", type: "carbonate" },
+            { name: "Hielo de Subsuelo Clastificado", color: 0x80d8ff, yield: "Hielo", type: "ice" },
+            { name: "Esferulita de Hematita (Blueberry)", color: 0xffab40, yield: "Hematita", type: "hematite" }
         ];
         const sampleGeom = new THREE.OctahedronGeometry(0.45, 0);
         for (let i = 0; i < 11; i++) {
@@ -594,7 +631,7 @@ export class Terrain3D {
         mCtx.fillText(translate('TELEMETRÍA ROVER: PR-01 ESTACIONADO | LRV-02 EN RUTA'), 24, 175);
         mCtx.fillStyle = '#80deea';
         mCtx.font = '14px monospace';
-        mCtx.fillText(translate('SIMULACIÓN · HÁBITAT DE ENTRENAMIENTO EVA'), 24, 210);
+        mCtx.fillText(translate('HÁBITAT DE ENTRENAMIENTO EVA'), 24, 210);
         mCtx.fillText(translate('Pulsa [E] junto a la esclusa para regresar al exterior.'), 24, 232);
         this.monitorTexture = new THREE.CanvasTexture(monitorCanvas);
         const monitorMat = new THREE.MeshBasicMaterial({ map: this.monitorTexture });

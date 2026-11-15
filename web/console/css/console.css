@@ -150,7 +150,6 @@
   .search:focus-within { width: calc(100vw - 120px); }
   .search-input { height: 38px; }
   .tr .pill { font-size: 10px; padding: 4px 8px; max-width: 58vw; }
-  #layer-pill { display: none; } /* active layer shown in the Analizar deck */
   /* drawers: planning is a full-width bottom drawer above the dock */
   .planning { left: 8px; right: 8px; width: auto; bottom: 80px; max-height: 52vh; z-index: 19; }
   .reopen-planning { left: 8px; bottom: 80px; top: auto; }
@@ -190,6 +189,7 @@
 .legend-item .btn-icon[aria-pressed="false"] { color: var(--text-3); }
 .route-toggle .sw.direct { border-color: #ebcf7f; border-top-style: dotted; background: none; }
 .route-toggle .sw.calcd { background: #65d8ff; border-color: #65d8ff; }
+.route-toggle.has-pnr .sw.calcd { background: linear-gradient(90deg, #65d8ff 50%, #ff8c36 50%); }
 
 .point-picker { position:relative; }
 .point-picker > summary { cursor:pointer; list-style:none; }

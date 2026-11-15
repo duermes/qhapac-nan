@@ -48,11 +48,6 @@
     <div class="hcard-title"><span data-icon="eye"></span>ELEMENTOS EN CAMPO VISUAL <span id="fov-filter" class="small dim"></span></div>
     <div id="fov-list" class="fov-list"></div>
   </section>
-  <section class="hcard suit" aria-label="Estado del traje" hidden>
-    <div class="hcard-title"><span data-icon="shield"></span>Estado del traje <span id="alert-count" class="badge cached">0</span></div>
-    <div id="suit-alerts" class="suit-alerts"><div class="empty">Sin avisos activos</div></div>
-    <div class="suit-foot mono" id="traction">TRACCIÓN NOMINAL</div>
-  </section>
 
   <!-- centre reticle -->
   <div class="reticle" aria-hidden="true">
@@ -70,11 +65,18 @@
       <div><span class="small">VALLE MÍNIMO</span><b class="mono cold" id="valley">—</b><small class="mono" id="valley-dz"></small></div></div>
     <div class="small dim" id="relief-txt">—</div>
   </section>
+  <div class="status-column">
+  <section class="hcard suit" aria-label="Estado del traje" hidden>
+    <div class="hcard-title"><span data-icon="shield"></span>Estado del traje <span id="alert-count" class="badge cached">0</span></div>
+    <div id="suit-alerts" class="suit-alerts"><div class="empty">Sin avisos activos</div></div>
+    <div class="suit-foot mono" id="traction">TRACCIÓN NOMINAL</div>
+  </section>
   <section class="hcard north" aria-label="Norte marciano">
     <div class="hcard-title"><i class="dot red"></i>3. NORTE MARCIANO</div>
     <div class="compass-ring"><div class="needle" id="needle"></div></div>
     <div class="mono az" id="azimuth">—° AZ</div>
   </section>
+  </div>
   <div class="loc mono" id="loc"><div class="small">LOCALIZACIÓN ASTRONAUTA:</div><div id="loc-ll">—</div><div class="small" id="loc-elev">—</div></div>
 
   <button id="eva-demo-toggle" class="hbtn" aria-controls="eva-demo-controls" aria-expanded="false">Demo</button>

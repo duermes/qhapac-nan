@@ -52,7 +52,7 @@ def test_data_provenance_metadata_structure(client):
 
 def test_frontend_contains_provenance_badges_and_selector():
     assert "export function provBadge" in read("shared/js/ui.js")
-    assert 'id="active-layer-badge"' in read("console/index.html") and "provenanceDialog" in read("console/js/menus.js")
+    assert 'id="active-layer-badge"' in read("console/js/decks.js") and "provenanceDialog" in read("console/js/menus.js")
 
 
 def test_html_templates_modular_architecture():

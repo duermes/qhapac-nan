@@ -4,7 +4,7 @@ import { fmt, haversine } from "/static/shared/js/geo.js";
 import { brandBlock, icon } from "/static/shared/js/icons.js";
 import { entitiesFrom, loadRecordedTraverse, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
 import { Map2D } from "/static/shared/js/map2d.js";
-import { $, $$, esc, provBadge, simBanner, toast } from "/static/shared/js/ui.js";
+import { $, $$, esc, simBanner, toast } from "/static/shared/js/ui.js";
 import { initDecks, layerParams } from "./decks.js";
 import { adaptiveLayers, layerViewport, LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
 import { drawLayer } from "/static/shared/js/raster.js";
@@ -27,7 +27,7 @@ export const ctx = {
 };
 window.qn = ctx; // debugging/verification hook
 
-const defaultParams = () => ({ max_slope_deg: null, walkback_limit_m: 4000, reserve_fraction: null, speed_mps: null,
+const defaultParams = () => ({ demo_limits: 2, max_slope_deg: null, walkback_limit_m: null, reserve_fraction: null, speed_mps: null,
   w_hazard: 1.0, w_context: 0.6, tau: 0.5, ltst_h: null, alpha: 0.5, realtime: true });
 
 let sessionSeq = 0;
@@ -57,16 +57,23 @@ function serializeSession(s) {
   c.traverses = s.traverses.map(({ revision, ...t }) => t);
   return c;
 }
+function restoreParams(saved = {}) {
+  const params = { ...defaultParams(), ...saved };
+  if (params.walkback_limit_m === 4000 && saved.demo_limits !== 2) params.walkback_limit_m = null;
+  params.demo_limits = 2;
+  return params;
+}
+
 async function restore() {
   let ws = null;
   try { ws = await api.workspace(); } catch { /* offline */ }
   if (!ws?.sessions?.length) { try { ws = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch { ws = null; } }
   if (ws?.sessions?.length) {
     ctx.sessions = ws.sessions.map((s) => ({
-      ...newSession(), ...s, params: { ...defaultParams(), ...(s.params || {}) },
+      ...newSession(), ...s, params: restoreParams(s.params),
       traverses: (s.traverses || []).map((t) => {
-        const legacy = t.result && !t.result.static_origin && t.result.route_model !== 3;
-        return { ...t, params: t.params || { ...s.params },
+        const legacy = t.result && !t.result.static_origin && t.result.route_model !== 4;
+        return { ...t, params: restoreParams(t.params || s.params),
           ...(legacy ? { result: null, status: "draft", saved: false } : {}) };
       }),
     }));
@@ -160,7 +167,7 @@ export async function setView(view, silent = false) {
       ctx.map3d = new Map3D($("#map3d"), ctx.region);
       if (ctx.sun) ctx.map3d.setSun(ctx.sun.az, ctx.sun.el);
       ctx.map3d.on("hover", (ll) => updateHud(ll));
-      ctx.map3d.on("click", (ll, hit, screen) => ctx.emit("mapclick", { ll, hit, screen }));
+      ctx.map3d.on("click", (ll, hit, screen) => ctx.emit("mapclick", { ll, hit, screen, adding: ctx.cur.addMode }));
       ctx.map3d.on("frame", () => { updateScaleBar(); ctx.layerDetail?.update(); });
       // keep 3D centred where the 2D camera was (context preserved)
       const c = ctx.map2d.screenToLL(ctx.map2d.w / 2, ctx.map2d.h / 2);
@@ -212,7 +219,7 @@ export function routeOverlays() {
         segments: v.pnr?.show_pnr || v.pnr?.classification === "INDETERMINATE" ? v.pnr.segments : null, pnr: v.pnr?.show_pnr ? v.pnr.pnr_point : null });
     }
     if (t.result.direct && (t.showDirect ?? (t.result.static_origin || (s.showDirect && active)))) {
-      out.push({ id: `${t.id}:direct`, points: t.result.direct.points, color: "#ebcf7f", width: 1.8, dash: [3, 6] });
+      out.push({ id: `${t.id}:direct`, points: t.result.direct.points, color: "#ebcf7f", width: 1.8, dash: [2, 6] });
     }
   }
   return out;
@@ -244,11 +251,7 @@ export function refreshScene() {
     ctx.map3d.setHazards(m.hidden.has("hazard") ? [] : m.hazards);
     ctx.map3d.setMarkers(ctx.entities, m.hidden);
   }
-  const activeLayer = s.eyes.analyze ? s.activeLayer : null;
-  const lname = activeLayer && ctx.catalog[activeLayer]?.name;
-  $("#active-layer-name").textContent = lname || "Relieve MOLA (sombreado)";
-  const prov = activeLayer ? ctx.catalog[activeLayer]?.provenance : "derived_from_nasa";
-  $("#active-layer-badge").innerHTML = prov ? provBadge(prov) : "";
+
 }
 
 /** Offscreen composite (relief + visible analytical layers) used as the 3D mantle. */
@@ -372,12 +375,12 @@ async function boot() {
       : [];
     return { region: region.key, layers, window };
   }, refreshScene);
-  ctx.map2d.on("click", (ll, hit, screen) => { updateHud(ll); ctx.emit("mapclick", { ll, hit, screen }); });
+  ctx.map2d.on("click", (ll, hit, screen) => { updateHud(ll); ctx.emit("mapclick", { ll, hit, screen, adding: ctx.cur.addMode }); });
   if (window.innerWidth <= 600) { $("#traverses").classList.add("collapsed"); }
   const restored = await restore();
   if (!restored && window.innerWidth <= 600) ctx.cur.planningCollapsed = true;
   await reloadAssets();
-  initDecks(ctx);
+  await initDecks(ctx);
   initPopover(ctx);
   initTraverses(ctx);
   initPlanning(ctx);

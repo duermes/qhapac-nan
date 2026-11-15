@@ -393,16 +393,18 @@ export class Map3D {
     const order = [...this.markers].sort((a, b) => a.rank - b.rank);
     for (const m of order) {
       const v = this.toWorld(m.e.lat, m.e.lon).project(this.camera);
-      let vis = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && m.rank <= lod;
+      let vis = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && (m.e.source === "user" || m.rank <= lod);
       const x = (v.x + 1) / 2 * w, y = (1 - v.y) / 2 * h;
+      let labelVisible = vis;
       if (vis) {
         // greedy collision avoidance: higher-priority labels win
         const lw = (m.lw ||= Math.min(220, 8 + m.e.name.length * 6.2)) * mag, lh = 30 * mag;
         const r = { x: x - lw / 2, y: y - lh, w: lw, h: lh };
-        if (placed.some((q) => !(r.x + r.w < q.x || q.x + q.w < r.x || r.y + r.h < q.y || q.y + q.h < r.y))) vis = false;
+        if (placed.some((q) => !(r.x + r.w < q.x || q.x + q.w < r.x || r.y + r.h < q.y || q.y + q.h < r.y))) labelVisible = false;
         else placed.push(r);
       }
-      m.el.style.display = vis ? "" : "none";
+      m.el.firstElementChild.hidden = !labelVisible;
+      m.el.style.display = vis && (labelVisible || m.e.source === "user") ? "" : "none";
       if (vis) {
         m.el.style.left = `${x}px`;
         m.el.style.top = `${y}px`;

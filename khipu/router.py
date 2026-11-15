@@ -171,25 +171,28 @@ def astar(terrain: TerrainContext, costmap: CostmapResult, start: tuple[int, int
     return PlannedPath(path, gscore[t], expanded)
 
 
+def segment_samples(a, b):
+    (ra, ca), (rb, cb) = a, b
+    n = int(max(abs(rb - ra), abs(cb - ca)) * 3) + 2
+    for k in range(n + 1):
+        f = k / n
+        yield ra + (rb - ra) * f, ca + (cb - ca) * f
+
+
 def segment_is_valid(terrain: TerrainContext, costmap: CostmapResult, a: tuple[float, float],
                      b: tuple[float, float], max_step_slope_deg: float, penalty: np.ndarray | None = None) -> bool:
     """Line-of-sight check: no forbidden cell and no steep step along a->b."""
     z = terrain.filled()
-    (ra, ca), (rb, cb) = a, b
-    n = int(max(abs(rb - ra), abs(cb - ca)) * 3) + 2
     tan_lim = math.tan(math.radians(max_step_slope_deg))
     g = terrain.geometry
     prev = None
-    for k in range(n + 1):
-        f = k / n
-        r = ra + (rb - ra) * f
-        c = ca + (cb - ca) * f
+    for k, (r, c) in enumerate(segment_samples(a, b)):
         ri, ci = int(round(r)), int(round(c))
         if ri < 0 or ci < 0 or ri >= z.shape[0] or ci >= z.shape[1]:
             return False
         if costmap.tiers[ri, ci] == TIER_FORBIDDEN:
             return False
-        if penalty is not None and penalty[ri, ci] > 1.0 and 0 < k < n:
+        if penalty is not None and penalty[ri, ci] > 1.0 and k > 0 and (r, c) != b:
             return False
         e = bilinear(z, r, c)
         if prev is not None:

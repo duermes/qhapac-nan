@@ -34,6 +34,7 @@ export function setAddMode(on) {
   ctx.cur.addMode = on;
   $("#new-point").setAttribute("aria-pressed", String(on));
   $("#map2d").classList.toggle("adding", on);
+  $("#map3d").classList.toggle("adding", on);
   if (on) ctx.decks?.risk.close();
   if (on) toast("Haz clic en el mapa para crear un punto (Esc cancela)", "", 2500);
 }
@@ -166,7 +167,7 @@ async function onDrop(e, ll) {
 }
 
 const MOBILE_FIELDS = {
-  astronaut: [["o2_kg", "Oxígeno (kg)", 1.2, 1.2], ["water_kg", "Agua (kg)", 3.6, 3.6],
+  astronaut: [["o2_kg", "Oxígeno (kg)", 1.2, 1.2], ["water_kg", "Agua (kg)", 1.65, 3.6],
     ["battery_wh", "Batería del traje (Wh)", 1100, 1100], ["speed_mps", "Velocidad (m/s)", 0.9, 5],
     ["max_slope_deg", "Pendiente máxima (°)", 25, 30]],
   rover: [["battery_wh", "Batería (Wh)", 120000, 120000], ["speed_mps", "Velocidad (m/s)", 2, 5],
@@ -195,7 +196,7 @@ function mobileValues(form, kind) {
 }
 
 function addPointDialog(ll) {
-  setAddMode(false);
+  if ($("#add-point-form")) return;
   const n = (ctx.userAssets?.length || 0) + 1;
   const sessionId = ctx.cur.id;
   const body = `<form id="add-point-form" style="display:grid;gap:8px">
@@ -207,19 +208,22 @@ function addPointDialog(ll) {
       <option value="astronaut">Astronauta virtual</option><option value="rover">Rover virtual</option></select>
     <div data-mobile-fields></div>
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="general"> Guardar en activos generales (persistente)</label></form>`;
-  const dialog = modal({ title: "Nuevo punto", body, actions: [
+  const dialog = modal({ title: "Nuevo punto", body, onClose: () => setAddMode(false), actions: [
     { label: "Cancelar" },
     { label: "Crear punto", cls: "btn-gold", onClick: async (root) => {
       const form = root.querySelector("form");
       if (!form.reportValidity()) return true;
       const f = new FormData(form);
+      const submit = root.querySelector(".btn-gold");
+      if (submit.disabled) return true;
+      submit.disabled = true;
       const id = `WP_${Date.now().toString(36).toUpperCase()}`;
       try {
         await api.addAsset({ id, name: f.get("name"), kind: f.get("kind"), lat: ll.lat, lon: ll.lon, session_id: sessionId, ...mobileValues(f, f.get("kind")), metadata: { created_in: "Hatun Wasi" } });
         if (f.get("general")) await api.saveToGeneral(sessionId, [id]);
         await reloadAssets();
         toast("Punto creado", "safe", 1500);
-      } catch (err) { toast(err.message, "danger"); return true; }
+      } catch (err) { submit.disabled = false; toast(err.message, "danger"); return true; }
     } },
   ] });
   dialog.el.querySelector("#ap-kind").addEventListener("change", (event) => {

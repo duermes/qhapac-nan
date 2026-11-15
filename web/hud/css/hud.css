@@ -46,7 +46,7 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
 .fov-item .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fov-item .d { color: var(--hud-accent); }
 .fov-item.active .n { color: var(--gold); }
-.suit { right: 18px; top: 340px; width: 228px; }
+
 .suit-alerts { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
 .suit-alerts .empty { color: var(--text-2); }
 .suit-alerts .a { padding: 3px 6px; border-left: 3px solid; }
@@ -70,7 +70,7 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
 .relief-grid div { display: flex; flex-direction: column; }
 .relief-grid b { font-size: 16px; }
 .warm { color: #f0a24b; } .cold { color: var(--hud-accent); }
-.north { right: 18px; bottom: 64px; width: 150px; text-align: center; }
+
 .compass-ring { width: 56px; height: 56px; margin: 0 auto; border-radius: 50%; border: 1px solid var(--hud-line); position: relative; }
 .needle { position: absolute; left: 50%; top: 6px; width: 2px; height: 22px; background: var(--danger); transform-origin: 50% 22px; }
 .needle::after { content: "N"; position: absolute; top: -12px; left: -3px; font-size: 9px; color: var(--danger); font-family: var(--font-mono); }
@@ -126,8 +126,8 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
   .vitals { max-width: calc(100vw - 24px); top: 52px; }
   .vitals .v { padding: 3px 6px; } .vitals .v b { font-size: 11px; }
   .goal { top: 130px; width: 160px; } .stamina { top: 130px; width: 160px; }
-  .fov { top: 130px; width: 180px; max-height: 150px; } .suit { top: 296px; width: 180px; }
-  .relief { width: 170px; bottom: 110px; } .north { width: 110px; bottom: 110px; }
+  .fov { top: 130px; width: 180px; max-height: 150px; }
+  .relief { width: 170px; bottom: 110px; }
   .eva-controls { right: 50%; transform: translateX(50%); bottom: 100px; }
   .voice { bottom: 50px; }
   .help { left: 12px; right: 12px; width: auto; top: 120px; }
@@ -143,15 +143,15 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
   .goal { top: 126px; }
   .stamina { top: 126px; }
   .prompt { bottom: 244px; width: calc(100vw - 24px); padding: 8px 10px; text-align: center; font-size: 11px; }
-  .relief, .north { bottom: 126px; }
+  .relief { bottom: 126px; }
   .eva-controls { right: 12px; bottom: 44px; transform: none; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(2, 36px); }
   .eva-controls .pad { min-height: 36px; }
   .voice { left: 12px; bottom: 64px; transform: none; padding: 6px 12px; }
   .hud-brand .hud-brand-sub { display: none; }
-  .goal, .stamina, .fov, .suit, .relief, .north { transform: scale(.86); transform-origin: top left; }
-  .fov, .suit { transform-origin: top right; }
-  .north, .suit { right: 8px; } .goal, .stamina, .relief { left: 8px; }
-  .relief, .north { transform-origin: bottom left; } .north { transform-origin: bottom right; }
+  .goal, .stamina, .fov, .relief { transform: scale(.86); transform-origin: top left; }
+  .fov { transform-origin: top right; }
+  .goal, .stamina, .relief { left: 8px; }
+  .relief { transform-origin: bottom left; }
 }
 
 .hud[data-camera="third"] > :not(#scene):not(script) { display: none !important; }
@@ -159,3 +159,23 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
 #eva-demo-toggle { position: fixed; z-index: 11; left: 17px; bottom: 56px; min-height: 24px; padding: 3px 8px; font-size: 10px; opacity: .8; }
 #eva-demo-controls { bottom: 92px; }
 @media (max-width: 700px) { #eva-demo-toggle { left: auto; right: 12px; bottom: 68px; } }
+
+.status-column {
+  position: fixed; right: 18px; bottom: 52px; z-index: 4;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  max-height: min(46dvh, calc(100dvh - 120px)); pointer-events: none;
+}
+.status-column .hcard { position: static; pointer-events: auto; }
+.status-column .suit { width: 228px; min-height: 0; overflow: auto; }
+.status-column .north { width: 150px; text-align: center; flex: none; }
+@media (max-width: 900px) {
+  .status-column { bottom: 60px; }
+  .status-column .suit { width: 180px; }
+  .status-column .north { width: 120px; }
+}
+@media (max-width: 600px) {
+  .status-column { right: 8px; bottom: 98px; }
+  .status-column .suit { width: min(158px, 42vw); }
+  .status-column .north { width: 105px; }
+  .status-column .compass-ring { width: 42px; height: 42px; }
+}

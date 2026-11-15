@@ -88,7 +88,7 @@ def walkback_envelope_m(consumables: SuitConsumables, speed_mps: float = 0.9, to
     Consumables are reduced by a reserve, converted to walk time at the
     (uphill-aware) metabolic rate and capped by the operational policy limit
     (1–4 km on foot)."""
-    policy_limit_m = max(1000.0, min(4000.0, policy_limit_m))
+    policy_limit_m = max(1000.0, min(8000.0, policy_limit_m))
     met = metabolic_power_w(mean_gradient, speed_mps, total_mass_kg)
     rates = plss_rates(met)
     left = consumables.hours_left(rates)

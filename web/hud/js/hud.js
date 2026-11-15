@@ -2,7 +2,7 @@ import { api } from "/static/shared/js/api.js";
 import { bearing, fmt, haversine } from "/static/shared/js/geo.js";
 import { ASSET_REGISTRY, icon } from "/static/shared/js/icons.js";
 import { entitiesFrom, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
-import { $, $$, colocatedScience, esc, modal, scienceDetails, simBanner, toast } from "/static/shared/js/ui.js";
+import { $, $$, colocatedScience, esc, modal, scienceDetails, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 import { currentLanguage } from "/static/shared/js/language.js";
 import { EvaScene } from "./scene.js";
@@ -13,7 +13,7 @@ const EVA_ID = new URLSearchParams(location.search).get("eva") || "EVA_01";
 const SAMPLE_CAPACITY = 16;
 const H = { eventAlerts: new Map(), conditionAlerts: [], x: 0, z: 0, speed: 0, keys: new Set(), targets: [], ti: 0, route: null, samples: [], filter: null, rate: 3, sos: false, inside: false };
 window.nawi = H;
-let region, scenario, scene, entities, base, vit, voice, walkLimit = 4000;
+let region, scenario, scene, entities, base, vit, voice, walkLimit = 8000;
 function iconize() { $$("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); }); }
 async function boot() {
     iconize();
@@ -25,15 +25,16 @@ async function boot() {
     }
     scenario = await loadScenario();
     entities = entitiesFrom(scenario);
-    walkLimit = scenario.eva_policy?.walkback_limit_m || 4000;
+    walkLimit = scenario.eva_policy?.walkback_limit_m || 8000;
     const me = entities.find((e) => e.id === EVA_ID) || entities.find((e) => e.kind === "astronaut");
     base = entities.find((e) => e.kind === "base");
     $("#eva-id").textContent = EVA_ID.replace("_", "-");
-    scene = new EvaScene($("#scene"), region, { lat: base.lat, lon: base.lon });
+    scene = new EvaScene($("#scene"), region, { lat: base.lat, lon: base.lon }, scenario.eva_policy);
     H.scene = scene;
-    const trainingZone = scene.toLatLon(scene.character.position.x + 25, scene.character.position.z + 15);
-    scenario.hazards = [...(scenario.hazards || []), {id:"EVA_TRAINING_HAZARD", name:"Zona de riesgo de entrenamiento (simulada)",
-      ...trainingZone, radius_m:8, warning_distance_m:12, provenance:"synthetic"}];
+    const lava = scenario.eva_policy?.lava_tubes;
+    if (lava) scenario.hazards = [...(scenario.hazards || []), {
+      ...lava, ...scene.toLatLon(lava.x, lava.z), tier: "forbidden", provenance: "synthetic",
+    }];
     H.x = scene.character.position.x;
     H.z = scene.character.position.z;
     const half = scene.world.gridSize / 2 - 4;
@@ -67,7 +68,7 @@ async function boot() {
         points: () => H.targets.filter((point) => !H.samples.includes(point.id)).map(({ id, name, description }) =>
             ({ id, name, description: description || "" })) });
     bind();
-    api.harness().then((h) => { simBanner(h.simulation); if (h.active.some((a) => a.kind === "suit_leak"))
+    api.harness().then((h) => { if (h.active.some((a) => a.kind === "suit_leak"))
         vit.leak = 2.2; }).catch(() => { });
     renderHelp();
     planToTarget(true);
@@ -192,7 +193,7 @@ async function slow() {
     if (vit.effort.staminaPct < 35) alerts.push({ level: "warning", code: "STAMINA", text: "Estamina baja: descansa para recuperarte" });
     if (vit.effort.heartRateBpm > 160) alerts.push({ level: "warning", code: "HR", text: "Frecuencia cardíaca elevada" });
     if (H.sos) alerts.push({ level: "critical", code: "SOS", text: "Emergencia EVA declarada — retorno asistido" });
-    if (vit.leak) alerts.push({ level: "critical", code: "LEAK", text: "Fuga en traje (simulación): consumo O₂ x2.2" });
+    if (vit.leak) alerts.push({ level: "critical", code: "LEAK", text: "Fuga en traje: consumo O₂ x2.2" });
     if (!H.inside && H.storm) alerts.push({ level: "critical", code: "STORM", text: "Tormenta de polvo de entrenamiento" });
     if (!result) alerts.push({ level: "warning", code: "CONNECTION", text: "Sin enlace con Khipu" });
     H.conditionAlerts = alerts;
@@ -203,7 +204,7 @@ async function slow() {
     await flushConsumption();
     const active = await api.harness().catch(() => null);
     if (active) {
-      simBanner(active.simulation);
+
       H.storm = active.active.some((event) => event.kind === "dust_storm");
       vit.leak = active.active.some((event) => event.kind === "suit_leak") ? 2.2 : 0;
       const tag = JSON.stringify(active.active.map(({ id, t }) => [id, t]));
@@ -228,7 +229,7 @@ function relief() {
 }
 
 async function planToTarget(silent) {
-  if (H.planning) { H.replanPending = true; return null; }
+  if (H.planning && silent) { H.replanPending = true; return null; }
   const t = target();
   if (!t || H.inside || H.samples.includes(t.id)) {
     if (!silent) eventAlert("ROUTE", H.inside ? "Sal de la base para iniciar la guía." : "No hay un objetivo disponible.");
@@ -238,8 +239,14 @@ async function planToTarget(silent) {
   H.planning = true;
   try {
     await flushConsumption();
+    if (version !== H.planVersion) return;
     const points = localRoute(scene, { x: H.x, z: H.z }, t);
-    if (points.length < 2) { H.route = null; H.routeError = null; scene.setRoute(null); return; }
+    if (points.length < 2) {
+      H.route = null;
+      H.routeError = "Ya estás en el objetivo.";
+      scene.setRoute(null);
+      return;
+    }
     const route = await evaRequest("surface-route", { asset_id: EVA_ID, points, available_o2_kg: vit.o2_kg,
       available_water_kg: vit.water_kg, available_battery_wh: vit.battery_wh,
       ltst_h: (13 + vit.elapsed_s * 24 / (24.6597 * 3600)) % 24 });
@@ -301,7 +308,7 @@ async function interact(key) {
     panels();
     slow();
   } else if (key !== "f" && H.prompt === "monitor") {
-    modal({ title: "Monitor de misión · Base Alfa", body: `<p>SIMULACIÓN DE ENTRENAMIENTO</p><dl class="kv"><dt>Tripulación</dt><dd>Hábitat presurizado</dd><dt>Muestras</dt><dd>${H.samples.length}/${SAMPLE_CAPACITY}</dd><dt>O₂</dt><dd>${(vit.o2_kg / 1.2 * 100).toFixed(1)}%</dd><dt>Batería</dt><dd>${(vit.battery_wh / 1100 * 100).toFixed(1)}%</dd></dl>` });
+    modal({ title: "Monitor de misión · Base Alfa", body: `<dl class="kv"><dt>Tripulación</dt><dd>Hábitat presurizado</dd><dt>Muestras</dt><dd>${H.samples.length}/${SAMPLE_CAPACITY}</dd><dt>O₂</dt><dd>${(vit.o2_kg / 1.2 * 100).toFixed(1)}%</dd><dt>Batería</dt><dd>${(vit.battery_wh / 1100 * 100).toFixed(1)}%</dd></dl>` });
   } else if (key !== "f" && H.prompt?.station) {
     const s = H.prompt.station;
     modal({ title: s.infoTitle,

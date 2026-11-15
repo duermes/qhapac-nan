@@ -5,7 +5,7 @@ import { Terrain3D } from "./world.js";
 import { CharacterController } from "./character.js";
 
 export class EvaScene {
-  constructor(container, region, origin) {
+  constructor(container, region, origin, training = {}) {
     this.el = container;
     this.region = region;
     this.origin = origin;
@@ -24,7 +24,7 @@ export class EvaScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
     this.buildSky();
-    this.world = new Terrain3D(this.scene, this.camera, "JEZERO_MARS", (x, z) => this.molaY(x, z));
+    this.world = new Terrain3D(this.scene, this.camera, "JEZERO_MARS", (x, z) => this.molaY(x, z), training);
     this.buildRegionalTerrain();
     this.onRecharge = () => {};
     this.onCollect = () => {};
@@ -102,7 +102,7 @@ export class EvaScene {
   }
 
   localEntities() {
-    const kinds = { base: "base", rover: "rover", astronaut: "astronaut", crew: "astronaut", science: "poi", antenna: "antenna" };
+    const kinds = { base: "base", rover: "rover", astronaut: "astronaut", crew: "astronaut", science: "poi", antenna: "antenna", hazard: "hazard" };
     const entries = this.world.pois.map((p, i) => ({
       id: i === 0 ? "BASE_ALFA" : `EVA_POI_${i}`,
       name: p.name, description: p.description, kind: i === 0 ? "base" : p.tag === "COMMS" ? "antenna" : kinds[p.type] === "base" ? "landmark" : kinds[p.type] || "landmark",

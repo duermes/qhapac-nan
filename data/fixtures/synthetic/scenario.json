@@ -78,7 +78,8 @@
       "max_slope_deg": 25,
       "speed_mps": 0.9,
       "resources": {
-        "o2_kg": 1.2
+        "o2_kg": 1.2,
+        "water_kg": 1.65
       }
     },
     {
@@ -90,7 +91,8 @@
       "max_slope_deg": 25,
       "speed_mps": 0.9,
       "resources": {
-        "o2_kg": 1.2
+        "o2_kg": 1.2,
+        "water_kg": 1.65
       }
     },
     {
@@ -338,7 +340,10 @@
     }
   ],
   "eva_policy": {
-    "walkback_limit_m": 4000,
+    "walkback_limit_m": 8000,
+    "local_max_slope_deg": 24,
+    "ice_site": {"x": 48, "z": -80},
+    "lava_tubes": {"id": "EVA_LAVA_TUBES", "name": "Tubos de lava", "x": 16, "z": 32, "radius_m": 10, "warning_distance_m": 12},
     "reserve_fraction": 0.25
   }
 }

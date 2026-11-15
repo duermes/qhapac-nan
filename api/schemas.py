@@ -67,6 +67,7 @@ class RouteRequest(BaseModel):
     waypoints: list[LatLon] = []
     asset_id: str | None = None
     profile: Profile | None = None
+    live_navigation: bool = False
     variants: bool = False  # legacy request field; the response contains one operational route
     params: RouteParams = RouteParams()
 
@@ -77,6 +78,7 @@ class ReplanRequest(BaseModel):
     current: LatLon
     destination: LatLon
     reevaluate: bool = False
+    live_navigation: bool = False
     return_prefix: list[EvaSurfacePoint] = Field(default_factory=list, max_length=10000)
     route_points: list[dict[str, Any]] = []
     obstacles: list[dict[str, Any]] = []

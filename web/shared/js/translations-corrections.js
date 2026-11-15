@@ -1,5 +1,15 @@
 // Shared labels and dynamic vocabulary: DOM, canvas maps, forms and API messages.
 export const correctionEnglish = {
+  "Peligro": "Risk", "Peso de peligro": "Risk weight",
+  "Retorno con reserva hasta el PNR": "Return with reserve up to the point of no return",
+  "Retorno no garantizado desde el PNR": "Return not guaranteed beyond the point of no return",
+  "Fuentes: NASA PDS (MOLA y Perseverance), NASA/JPL Mars Trek, USGS SIM 3464. NASA Open APIs: APOD e InSight.": "Sources: NASA PDS (MOLA and Perseverance), NASA/JPL Mars Trek, USGS SIM 3464. NASA Open APIs: APOD and InSight.",
+  "Zona prohibida": "Exclusion zone", "Zona peligrosa": "Hazardous area", "Zona peligrosa próxima": "Hazardous area nearby",
+  "Salida de emergencia": "Emergency exit", "ZONA PROHIBIDA": "EXCLUSION ZONE", "PRECAUCIÓN": "CAUTION",
+  "Ya estás en el objetivo.": "You have reached the target.",
+  "Tubos de lava": "Lava tubes", "Tubos de lava inestables. Mantén distancia.": "Unstable lava tubes. Keep clear.",
+  "Depósito de hielo": "Ice deposit", "Hielo de subsuelo": "Subsurface ice",
+
   "Minerales hidratados":"Hydrated minerals", "Entrada de Neretva Vallis":"Neretva Vallis entrance",
   "Borde del Cráter Belva":"Belva Crater rim", "Carbonatos del Margen Interno":"Inner margin carbonates",
   "Zona Especial COSPAR Cat. IVb":"COSPAR special region Cat. IVb",
@@ -43,7 +53,7 @@ export const correctionEnglish = {
   "MRO RELAY ORBITAL: ENLACE BANDA X CONECTADO (12 Mbps)":"MRO ORBITAL RELAY: X-BAND LINK CONNECTED (12 Mbps)",
   "SOPORTE VITAL EVA: RACKS DE RECARGA O2/BAT ACTIVOS":"EVA LIFE SUPPORT: O2/BAT RESUPPLY RACKS ACTIVE",
   "TELEMETRÍA ROVER: PR-01 ESTACIONADO | LRV-02 EN RUTA":"ROVER TELEMETRY: PR-01 PARKED | LRV-02 EN ROUTE",
-  "SIMULACIÓN · HÁBITAT DE ENTRENAMIENTO EVA":"SIMULATION · EVA TRAINING HABITAT",
+  "HÁBITAT DE ENTRENAMIENTO EVA":"EVA TRAINING HABITAT",
   "Pulsa [E] junto a la esclusa para regresar al exterior.":"Press [E] near the airlock to return outside.",
   "Cráter Jezero":"Jezero Crater", "Mapa 2D del terreno":"2D terrain map", "Mapa 3D del terreno":"3D terrain map",
   "caché":"cache", "procedencia":"source", "Fuente":"Source", "Oxígeno":"Oxygen", "oxígeno":"oxygen", "batería":"battery", "agua":"water",

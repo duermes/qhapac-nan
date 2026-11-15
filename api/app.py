@@ -18,7 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from khipu.resources import ROVER_DEMO_CAPACITY_WH
+from khipu.resources import EVA_DEMO_WATER_CAPACITY_KG, ROVER_DEMO_CAPACITY_WH
 from khipu.operations import CONTINGENCIES, Localizer, PurePursuit
 from khipu.physics import ephemeris as eph
 from khipu.physics import metabolic as met
@@ -237,7 +237,7 @@ def add_asset(a: S.AssetIn):
     if a.kind in ("rover", "astronaut"):
         data["virtual"] = True
         data.setdefault("resources", {"battery_wh": ROVER_DEMO_CAPACITY_WH} if a.kind == "rover" else
-                        {"o2_kg": 1.2, "water_kg": 3.6, "battery_wh": 1100})
+                        {"o2_kg": 1.2, "water_kg": EVA_DEMO_WATER_CAPACITY_KG, "battery_wh": 1100})
     if t is not None and data.get("elevation_m") is None:
         data["elevation_m"] = t.elevation_at(a.lat, a.lon)
     return ok(engine.assets.add({k: v for k, v in data.items() if k != "session_id"}, a.session_id))
@@ -560,7 +560,7 @@ def eva_vitals(req: S.EvaVitalsRequest):
 @app.post("/api/eva/surface-route")
 def eva_surface_route(req: S.EvaSurfaceRoute):
     from khipu import navigation
-    from khipu.geodesy import haversine_m
+    from khipu.geodesy import TangentPlane, haversine_m
     from khipu.resources import route_metrics
 
     asset = engine.find_entity(req.asset_id)
@@ -571,12 +571,25 @@ def eva_surface_route(req: S.EvaSurfaceRoute):
     walk_limit = engine.eva_walkback_limit()
     if base is None or any(haversine_m(base["lat"], base["lon"], p["lat"], p["lon"]) > walk_limit for p in points):
         raise RouteInfeasible("walkback_exceeded", "La ruta excede el radio de retorno a pie")
-    params = {"max_distance_m": walk_limit, "ltst_h": req.ltst_h}
+    training = engine.scenario.get("eva_policy", {})
+    lava = training.get("lava_tubes")
+    if lava:
+        projection = TangentPlane(base["lat"], base["lon"])
+        center = (lava["x"] + 65, -lava["z"] - 60)
+        vertices = [projection.to_xy(p["lat"], p["lon"]) for p in points]
+        for (ax, ay), (bx, by) in zip(vertices, vertices[1:]):
+            dx, dy = bx - ax, by - ay
+            length_sq = dx * dx + dy * dy
+            fraction = max(0, min(1, ((center[0] - ax) * dx + (center[1] - ay) * dy) / length_sq)) if length_sq else 0
+            if math.hypot(ax + fraction * dx - center[0], ay + fraction * dy - center[1]) <= lava["radius_m"]:
+                navigation.forbid([navigation.issue("hazard", "El sendero cruza los tubos de lava.")])
+    surface_slope = training.get("local_max_slope_deg", 24)
+    params = {"max_distance_m": walk_limit, "max_slope_deg": surface_slope, "ltst_h": req.ltst_h}
     terrain, costmap, link = engine.operational_costmap(engine.default_region(), "astronaut", params, asset=asset)
     navigation.check_endpoints(terrain, costmap, [((points[0]["lat"], points[0]["lon"]), "origen"),
                                                   ((points[-1]["lat"], points[-1]["lon"]), "destino")])
     navigation.check_surface_geometry(terrain, costmap, points)
-    if route_metrics(points, "astronaut")["max_grade_deg"] > costmap.params.slope_limit():
+    if route_metrics(points, "astronaut")["max_grade_deg"] > surface_slope + 0.01:
         navigation.forbid([navigation.issue("slope", "El sendero de entrenamiento cruza una pendiente no transitable.")])
     telemetry = {key: value for key, value in {"o2_kg": req.available_o2_kg, "water_kg": req.available_water_kg,
                                                 "battery_wh": req.available_battery_wh}.items() if value is not None}
@@ -602,7 +615,7 @@ def eva_resupply(req: S.EvaResupplyRequest):
     ledger = engine.ledger(req.asset_id, "astronaut")
     ledger.history.append({"event": "habitat_resupply", "previous_consumed": ledger.consumed, "remaining": ledger.capacity})
     ledger.consumed = 0
-    return ok({"ledger": ledger.to_dict(), "o2_kg": ledger.capacity, "water_kg": 3.6, "battery_wh": 1100})
+    return ok({"ledger": ledger.to_dict(), "o2_kg": ledger.capacity, "water_kg": EVA_DEMO_WATER_CAPACITY_KG, "battery_wh": 1100})
 
 
 @app.get("/api/ledger/{asset_id}")
