@@ -27,7 +27,7 @@ const MAP_LAYERS = { relief: "Relieve", slope: "Pendiente", hazard: "Riesgo", ib
 function iconize() { $$("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); }); }
 
 async function boot() {
-  $("#brand").innerHTML = brandBlock("Chaski · Núcleo Khipu");
+  $("#brand").innerHTML = brandBlock("Chaski");
   iconize();
   const regions = await api.regions();
   region = await loadRegion(regions.default, 1);
@@ -64,6 +64,7 @@ async function boot() {
   // telecom grid for link margin sampling (same Khipu layer as the console)
   layerGrid(region.key, "telecom", {}).then((r) => { S.telecom = r.decoded; }).catch(() => {});
   bindUI();
+  document.addEventListener("qn:language", updatePanels);
   voice = new VoiceCopilot({ iface: "rover", onIntent: handleIntent, button: $("#voice"), points: () => entities });
   api.harness().then((h) => simBanner(h.simulation)).catch(() => {});
   setMode("navigate");
@@ -513,6 +514,7 @@ function drawScale() {
 }
 
 function handleIntent(r) {
+  if (r.intent === "help") roverHelp();
   if (r.intent === "set_mode") setMode(r.mode);
   if (r.intent === "emergency_stop") toast("Emergencia: contacta al operador del rover", "danger");
   if (r.intent === "safe_return") safeReturn();
@@ -586,6 +588,18 @@ function moveCamera(direction) {
   } else map.zoomAt(factor);
 }
 
+function roverHelp() {
+  modal({ title: "Ayuda de Chaski", body: `
+    <h3>Controles del rover</h3>
+    <ul><li><kbd>W</kbd> / <kbd>↑</kbd> · Avanzar</li><li><kbd>S</kbd> / <kbd>↓</kbd> · Retroceder</li>
+    <li><kbd>A</kbd> / <kbd>←</kbd> · Girar a la izquierda</li><li><kbd>D</kbd> / <kbd>→</kbd> · Girar a la derecha</li></ul>
+    <h3>Comandos de voz</h3>
+    <p>Activa el copiloto de voz o pulsa K. Puedes decir:</p>
+    <ul><li>Ruta a Base Alfa</li><li>Vuelve a base</li><li>Muestra capa pendiente</li>
+    <li>Modo navegación, reconocer o planificar</li><li>Estado</li><li>Info de Base Alfa</li>
+    <li>Filtra ciencia</li><li>Parada de emergencia</li><li>Ayuda</li></ul>` });
+}
+
 function demoDialog() {
   const body = document.createElement("div");
   const draw = async () => {
@@ -619,6 +633,7 @@ function bindUI() {
   $("#inspect-close").addEventListener("click", () => { $("#inspect-card").hidden = true; });
   $("#view-toggle").addEventListener("click", () => setView(S.view === "2d" ? "3d" : "2d"));
   $("#demo-btn").addEventListener("click", demoDialog);
+  $("#rover-help").addEventListener("click", roverHelp);
   $("#map-menu-btn").addEventListener("click", () => {
     const order = Object.keys(MAP_LAYERS).filter((id) => id === "relief" || catalog[id] || id === "recorded_traverse" && S.recordedPaths.length);
     selectLayer(order[(order.indexOf(S.layer) + 1) % order.length]);
@@ -648,6 +663,7 @@ function bindUI() {
     if (k === "2") setMode("recon");
     if (k === "3") setMode("plan");
     if (k === "k" && !e.repeat) voice.start();
+    if (k === "h" && !e.repeat && !e.target.closest("[role=dialog]")) roverHelp();
   });
   document.addEventListener("keyup", (event) => S.demoKeys.delete(keymap[event.key.toLowerCase()]));
   window.addEventListener("blur", () => S.demoKeys.clear());

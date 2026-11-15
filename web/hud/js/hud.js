@@ -6,7 +6,7 @@ import { $, $$, colocatedScience, esc, modal, scienceDetails, toast } from "/sta
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 import { currentLanguage } from "/static/shared/js/language.js";
 import { EvaScene } from "./scene.js";
-import { MONITOR_IMAGES } from "./world-assets.js";
+import { monitorImage } from "./world-assets.js";
 import { consume, createVitals, refreshVitals, renderAlerts, renderVitals } from "./vitals.js";
 import { localRoute } from "./navigation.js";
 import { evaRequest } from "./eva-api.js";
@@ -21,8 +21,7 @@ async function boot() {
     const regions = await api.regions();
     region = await loadRegion(regions.default, 1);
     if (!region.available) {
-        toast("Sin datos de terreno", "danger", 10000);
-        return;
+        throw new Error("El servicio no entregó el terreno MOLA para Ñawi.");
     }
     scenario = await loadScenario();
     entities = entitiesFrom(scenario);
@@ -32,6 +31,8 @@ async function boot() {
     $("#eva-id").textContent = EVA_ID.replace("_", "-");
     scene = new EvaScene($("#scene"), region, { lat: base.lat, lon: base.lon }, scenario.eva_policy);
     H.scene = scene;
+    $("#eva-2d-status").hidden = !scene.overview;
+    if (scene.overview) $("#camera-btn").hidden = true;
     const lava = scenario.eva_policy?.lava_tubes;
     if (lava) scenario.hazards = [...(scenario.hazards || []), {
       ...lava, ...scene.toLatLon(lava.x, lava.z), tier: "forbidden", provenance: "synthetic",
@@ -72,7 +73,10 @@ async function boot() {
     api.harness().then((h) => { if (h.active.some((a) => a.kind === "suit_leak"))
         vit.leak = 2.2; }).catch(() => { });
     renderHelp();
-    document.addEventListener("qn:language", renderHelp);
+    document.addEventListener("qn:language", () => {
+      renderHelp();
+      $$("[data-monitor]").forEach((image) => { image.src = monitorImage(image.dataset.monitor); });
+    });
     planToTarget(true);
     let last = performance.now();
     const loop = (t) => {
@@ -310,7 +314,7 @@ async function interact(key) {
     panels();
     slow();
   } else if (key !== "f" && H.prompt === "monitor") {
-    modal({ title: "Monitor de misión · Base Alfa", body: `<img class="monitor-preview" src="${MONITOR_IMAGES.hatunWasi}" alt="Captura de Hatun Wasi"><dl class="kv"><dt>Tripulación</dt><dd>Hábitat presurizado</dd><dt>Muestras</dt><dd>${H.samples.length}/${SAMPLE_CAPACITY}</dd><dt>O₂</dt><dd>${(vit.o2_kg / 1.2 * 100).toFixed(1)}%</dd><dt>Batería</dt><dd>${(vit.battery_wh / 1100 * 100).toFixed(1)}%</dd></dl>` });
+    modal({ title: "Monitor de misión · Base Alfa", body: `<img class="monitor-preview" data-monitor="hatunWasi" src="${monitorImage("hatunWasi")}" alt="Captura de Hatun Wasi"><dl class="kv"><dt>Tripulación</dt><dd>Hábitat presurizado</dd><dt>Muestras</dt><dd>${H.samples.length}/${SAMPLE_CAPACITY}</dd><dt>O₂</dt><dd>${(vit.o2_kg / 1.2 * 100).toFixed(1)}%</dd><dt>Batería</dt><dd>${(vit.battery_wh / 1100 * 100).toFixed(1)}%</dd></dl>` });
   } else if (key !== "f" && H.prompt?.station) {
     const s = H.prompt.station;
     modal({ title: s.infoTitle,
@@ -344,7 +348,8 @@ async function interact(key) {
       onClick: () => {
         const preview = document.createElement("img");
         preview.className = "monitor-preview";
-        preview.src = point.monitor;
+        preview.dataset.monitor = point.monitor;
+        preview.src = monitorImage(point.monitor);
         preview.alt = "Captura de Chaski";
         data.replaceChildren(preview);
         return true;
@@ -388,6 +393,7 @@ async function interact(key) {
 }
 
 function cycleCamera() {
+    if (scene.overview) return;
     scene.cameraMode = scene.cameraMode === "third" ? "first" : "third";
     document.body.dataset.camera = scene.cameraMode;
     H.keys.clear();
@@ -466,7 +472,7 @@ function renderHelp() {
     $("#help-body").innerHTML = `<p><b>Moverse:</b> W/S o ▲▼ avanzar/retroceder · A/D o ◀▶ girar · arrastrar para mirar.</p>
     <p><b>E</b> usar la esclusa, recolectar, hablar o inspeccionar y reparar equipos · <b>C</b> para cambiar de cámara. En vista externa, toca la escena para volver · <b>K</b> Khipu voz · <b>H</b> ayuda. Pulsa K o el botón de voz para dar una orden.</p>
     <h3>Comandos de voz</h3><ul>${commands.map((command) => "<li>" + esc(command) + "</li>").join("")}</ul>
-    <p><b>Datos:</b> MOLA regional (463 m/px), con montes, dunas y rocas sintéticos para entrenamiento local. Consumibles: Khipu (Minetti/PLSS/Rohmert). Estamina: esfuerzo acumulado con recuperación. Los puntos NASA cercanos se pueden inspeccionar desde el visor.</p>
+    <p><b>Datos:</b> <span>MOLA regional (463 m/px), con montes, dunas y rocas sintéticos para entrenamiento local. Consumibles: Khipu (Minetti/PLSS/Rohmert). Estamina: esfuerzo acumulado con recuperación. Los puntos NASA cercanos se pueden inspeccionar desde el visor.</span></p>
     <p><b>Walkback:</b> límite a pie ${walkLimit} m con reserva del 25%. Recalcular no repone O₂.</p>`;
 }
 function toggleHelp(force) {
@@ -535,4 +541,10 @@ function bind() {
         if (controls.hidden) H.keys.clear();
     });
 }
-boot().catch((e) => { console.error(e); toast(`Error: ${e.message}`, "danger", 10000); });
+$("#eva-retry").addEventListener("click", () => location.reload());
+boot().catch((error) => {
+    console.error(error);
+    $("#eva-load-message").textContent = error.message;
+    $("#eva-load-error").hidden = false;
+    document.body.dataset.ready = "error";
+});

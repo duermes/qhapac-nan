@@ -53,7 +53,7 @@
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   function reveal() {
     const elapsed = performance.now() - started;
-    if ((document.body?.dataset.ready !== "1" || elapsed < (reduced ? 40 : 850)) && elapsed < 15000) return requestAnimationFrame(reveal);
+    if ((!(["1", "error"].includes(document.body?.dataset.ready)) || elapsed < (reduced ? 40 : 850)) && elapsed < 15000) return requestAnimationFrame(reveal);
     const animation = loading.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduced ? 1 : 450, easing: "ease-out", fill: "forwards" });
     animation.finished.finally(() => loading.remove());
   }

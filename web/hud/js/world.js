@@ -1,6 +1,6 @@
 import { translate } from "/static/shared/js/language.js";
 import * as THREE from "three";
-import { AssetRegistry, HUD_MANIFEST, MONITOR_IMAGES } from "./world-assets.js";
+import { AssetRegistry, HUD_MANIFEST, monitorImage } from "./world-assets.js";
 export class Terrain3D {
     constructor(scene, camera, presetKey = 'JEZERO_MARS', surfaceSampler = () => 0, training = {}) {
         this.scene = scene;
@@ -687,7 +687,21 @@ export class Terrain3D {
         const monitorCanvas = document.createElement('canvas');
         this.monitorCanvas = monitorCanvas;
         this.monitorScreenshot = new Image();
-        this.monitorScreenshot.src = MONITOR_IMAGES.hatunWasi;
+        this.monitorScreenshot.src = monitorImage("hatunWasi");
+        document.addEventListener("qn:language", () => {
+            this.monitorScreenshot.src = monitorImage("hatunWasi");
+            const texture = this.roverMonitorTexture;
+            if (texture) {
+                const image = new Image();
+                const source = monitorImage("chaski");
+                image.onload = () => {
+                    if (source !== monitorImage("chaski")) return;
+                    texture.image = image;
+                    texture.needsUpdate = true;
+                };
+                image.src = source;
+            }
+        });
         monitorCanvas.width = 512;
         monitorCanvas.height = 256;
         const mCtx = monitorCanvas.getContext('2d');
@@ -787,7 +801,7 @@ export class Terrain3D {
         roverGroup.add(mastHead);
         if (isMountable) {
             if (!this.roverMonitorTexture) {
-                this.roverMonitorTexture = new THREE.TextureLoader().load(MONITOR_IMAGES.chaski);
+                this.roverMonitorTexture = new THREE.TextureLoader().load(monitorImage("chaski"));
                 this.roverMonitorTexture.colorSpace = THREE.SRGBColorSpace;
             }
             const panel = new THREE.Group();
@@ -809,7 +823,7 @@ export class Terrain3D {
             z: rz,
             name: name,
             tag: isMountable ? "ROVER CABINA" : "ROVER",
-            monitor: isMountable ? MONITOR_IMAGES.chaski : null,
+            monitor: isMountable ? "chaski" : null,
             icon: "🚜",
             type: "rover",
             color: "#ffb300",

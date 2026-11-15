@@ -64,7 +64,7 @@ def interpret(text: str, pois: list[dict] | None = None, interface: str = "conso
     def line(es, en):
         return en if language == "en" else es
 
-    t = normalize(text)
+    t = normalize(text).replace("alpha base", "base alfa")
     pois = pois or []
     if not t:
         return {"intent": "none", "speech": line("No te escuché. Repite la orden o usa los controles manuales.", "I didn’t hear you. Repeat the command or use the controls.")}

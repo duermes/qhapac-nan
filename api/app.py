@@ -141,7 +141,7 @@ def regions():
 def data_manifest():
     from khipu_data.regions import MANIFEST
     import json as _json
-    m = _json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"schema_version": "1.0", "datasets": []}
+    m = _json.loads(MANIFEST.read_text(encoding="utf-8")) if MANIFEST.exists() else {"schema_version": "1.0", "datasets": []}
     return ok({"kickoff_manifest": m, "regions": list(engine.regions.manifests().values()),
                "science_sources": engine.science.data["sources"],
                "scenario": {"classification": engine.scenario.get("classification"), "label": engine.scenario.get("label"),

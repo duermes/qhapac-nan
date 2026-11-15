@@ -10,6 +10,7 @@ let language = "es";
 try { if (localStorage.getItem(key) === "en") language = "en"; } catch {}
 let original = new WeakMap();
 const dictionary = new Map(Object.entries(english));
+const patterns = [...correctionPatterns, ...englishPatterns];
 const fragments = [...dictionary.keys()].filter(key => key.length > 3 && dictionary.get(key) !== key)
   .sort((a,b) => b.length - a.length).map(key => key.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
 const fragmentPattern = new RegExp(`(?<![\\p{L}])(?:${fragments.join("|")})(?![\\p{L}])`, "gu");
@@ -21,9 +22,17 @@ export function translate(text) {
   if (language !== "en" || typeof text !== "string") return text;
   const value = text.trim();
   if (!value) return text;
+  const routeError = value.match(/^(Punto de (?:origen|destino|waypoint \d+) inviable|Sin corredor viable)\. (.+)$/);
+  if (routeError) {
+    return text.replace(value, () => translate(routeError[1]) + ". " + translate(routeError[2]));
+  }
+  const routeReason = value.match(/^(origen|destino|waypoint \d+) · (.+)$/);
+  if (routeReason) {
+    return text.replace(value, () => translate(routeReason[1]) + " · " + translate(routeReason[2]));
+  }
   let result = dictionary.get(value);
   if (result === undefined) {
-    for (const [pattern, replacement] of [...correctionPatterns, ...englishPatterns]) {
+    for (const [pattern, replacement] of patterns) {
       if (!pattern.test(value)) continue;
       result = value.replace(pattern, replacement);
       break;

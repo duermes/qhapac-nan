@@ -84,10 +84,10 @@ test("turning decelerates smoothly and walking keeps the chosen camera pitch", (
   assert.equal(c.helmetPitch, 0.25);
 });
 
-test("the visor uses the shared stone palette and has no portal link", async () => {
+test("the visor uses the shared stone palette and links to the portal", async () => {
   const html = await readFile(new URL("../web/hud/index.html", import.meta.url), "utf8");
   const css = await readFile(new URL("../web/hud/css/hud.css", import.meta.url), "utf8");
-  assert.ok(!html.includes('aria-label="Volver al portal"'));
+  assert.match(html, /href="\/home"[^>]*aria-label="Volver al portal"/);
   assert.ok(css.includes("--hud-accent: var(--gold)"));
   assert.ok(css.includes("var(--copper)"));
   assert.ok(css.includes("var(--glass-strong)"));

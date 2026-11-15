@@ -24,7 +24,7 @@ def _label_meta(path: Path) -> dict:
 
 
 def scan_raw(raw: Path = RAW, manifest_path: Path = MANIFEST, now: str | None = None) -> dict:
-    m = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"schema_version": "1.0", "datasets": []}
+    m = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"schema_version": "1.0", "datasets": []}
     known = {f["path"] for d in m["datasets"] for f in d.get("files", [])}
     added = []
     groups: dict[Path, list[Path]] = {}
@@ -53,5 +53,5 @@ def scan_raw(raw: Path = RAW, manifest_path: Path = MANIFEST, now: str | None = 
         }
         m["datasets"].append(entry)
         added.append(entry["id"])
-    manifest_path.write_text(json.dumps(m, indent=2, ensure_ascii=False))
+    manifest_path.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
     return {"added": added, "total": len(m["datasets"])}

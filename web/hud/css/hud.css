@@ -181,3 +181,7 @@ body.hud { background: var(--basalt-0); --hud-line: rgba(223,189,128,.32); --hud
 }
 
 .monitor-preview { display: block; width: 100%; height: auto; margin-bottom: 10px; border: 1px solid var(--joint); }
+
+.eva-load-error { z-index: 24; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 24px)); }
+.eva-load-error h2 { margin: 0 0 8px; }
+.eva-2d-status { z-index: 5; top: 92px; left: 50%; transform: translateX(-50%); font-size: 11px; }

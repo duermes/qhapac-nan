@@ -69,7 +69,7 @@ function render(time) {
   progress = motionPreference.matches ? targetProgress : progress + (targetProgress - progress) * (1 - Math.exp(-12 * dt));
   if (Math.abs(progress - targetProgress) < 0.00008) progress = targetProgress;
   const state = journeyState(progress, width, height, motionPreference.matches);
-  const eye = eyeGeometry(state, width, height, (art.naturalWidth || 2172) / (art.naturalHeight || 724));
+  const eye = eyeGeometry(state, width, height, (art.naturalWidth || 4416) / (art.naturalHeight || 960));
   viewport.style.setProperty("--world-width", `${state.worldWidth}px`);
   viewport.style.setProperty("--world-x", `${-state.cameraX}px`);
   viewport.style.setProperty("--focus-x", `${eye.focusX}px`);

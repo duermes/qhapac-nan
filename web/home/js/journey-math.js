@@ -16,11 +16,11 @@ export function interpolate(progress, frames) {
 
 export function journeyState(progress, width, height, reduced = false) {
   const p = clamp(progress);
-  const baseWidth = Math.max(width * 2.4, height * 3.2);
+  const baseWidth = Math.max(width * 2.4, height * 4.6);
   const worldWidth = baseWidth;
-  const x0 = clamp(baseWidth * 0.18 - width * 0.63, 0, baseWidth - width);
-  const x1 = clamp(baseWidth * 0.465 - width * 0.55, 0, baseWidth - width);
-  const x2 = clamp(worldWidth * 0.783 - width * 0.66, 0, worldWidth - width);
+  const x0 = clamp(baseWidth * 0.14 - width * 0.55, 0, baseWidth - width);
+  const x1 = clamp(baseWidth * 0.45 - width * 0.48, 0, baseWidth - width);
+  const x2 = clamp(worldWidth * 0.867 - width * 0.72, 0, worldWidth - width);
   const stage = p < 0.285 ? 0 : p < 0.645 ? 1 : 2;
   const approach = smooth(0.745, 1, p);
   const maxZoom = width <= 650 ? 1.8 : 2.2;
@@ -42,14 +42,14 @@ export function journeyState(progress, width, height, reduced = false) {
   };
 }
 
-export function eyeGeometry(state, width, height, ratio = 3) {
+export function eyeGeometry(state, width, height, ratio = 4416 / 960) {
   const worldHeight = state.worldWidth / ratio;
-  const focusX = state.worldWidth * 0.784 - state.cameraX;
-  const focusY = (height - worldHeight) / 2 + worldHeight * 0.344;
+  const focusX = state.worldWidth * 0.867 - state.cameraX;
+  const focusY = (height - worldHeight) / 2 + worldHeight * 0.302;
   const shiftX = (width * (width <= 650 ? 0.5 : 0.68) - focusX) * state.approach;
-  const shiftY = (height * 0.4 - focusY) * state.approach;
+  const shiftY = (height * 0.38 - focusY) * state.approach;
   const eyeWidth = Math.max(44, state.worldWidth * 0.012 * state.zoom);
-  const eyeHeight = Math.max(44, worldHeight * 0.008 * state.zoom);
+  const eyeHeight = Math.max(44, worldHeight * 0.012 * state.zoom);
   return { focusX, focusY, shiftX, shiftY, left: focusX + shiftX - eyeWidth / 2, top: focusY + shiftY - eyeHeight / 2, width: eyeWidth, height: eyeHeight };
 }
 

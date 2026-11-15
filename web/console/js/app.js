@@ -343,7 +343,7 @@ export async function applyRealSun() {
 
 // ------------------------------------------------------------------ boot
 async function boot() {
-  $("#brand").innerHTML = brandBlock("Hatun Wasi · Núcleo Khipu");
+  $("#brand").innerHTML = brandBlock("Hatun Wasi");
   $("#menu-btn").innerHTML = icon("menu");
   $("#planning-collapse").innerHTML = icon("collapse");
   $("#traverse-toggle").innerHTML = icon("chevron");

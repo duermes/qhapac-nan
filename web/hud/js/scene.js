@@ -16,12 +16,18 @@ export class EvaScene {
     this.scene.background = new THREE.Color(0xc98a5a);
     this.scene.fog = new THREE.Fog(0xc4875a, 180, 2200);
     this.camera = new THREE.PerspectiveCamera(65, container.clientWidth / container.clientHeight, 0.1, 8000);
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    try {
+      this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    } catch {
+      const canvas = document.createElement("canvas");
+      this.overview = canvas.getContext("2d");
+      this.renderer = { domElement: canvas, setSize(w, h) { canvas.width = w; canvas.height = h; } };
+    }
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
     this.buildSky();
     this.world = new Terrain3D(this.scene, this.camera, "JEZERO_MARS", (x, z) => this.molaY(x, z), training);
@@ -126,6 +132,11 @@ export class EvaScene {
   }
 
   setRoute(points, pnr = {}) {
+    if (this.overview) {
+      this.overviewRoute = points?.map((point) => this.toLocal(point.lat, point.lon));
+      this.overviewPnr = pnr;
+      return;
+    }
     this.routeGroup.traverse(obj => { obj.geometry?.dispose(); obj.material?.dispose(); });
     this.routeGroup.clear();
     if (!points || points.length < 2) return;
@@ -220,6 +231,10 @@ export class EvaScene {
     this.world.updateCompanions(dt);
     const inside = this.character.isInsideBase;
     this.scene.fog = inside ? null : this.scene.fog || new THREE.Fog(0xc4875a, 180, 2200);
+    if (this.overview) {
+      this.renderOverview(x, z);
+      return;
+    }
     this.renderer.render(this.scene, this.camera);
     const w = this.el.clientWidth, h = this.el.clientHeight;
     for (const m of this.markers) {
@@ -234,6 +249,66 @@ export class EvaScene {
       m.el.hidden = !visible;
       if (visible) { m.el.style.left = `${(v.x + 1) / 2 * w}px`; m.el.style.top = `${(1 - v.y) / 2 * h}px`; }
     }
+  }
+
+  renderOverview(x, z) {
+    const ctx = this.overview;
+    const { width, height } = ctx.canvas;
+    const scale = Math.min(width, height) / 410;
+    if (!this.overviewTerrain) {
+      const terrain = this.overviewTerrain = document.createElement("canvas");
+      terrain.width = terrain.height = 180;
+      const ground = terrain.getContext("2d");
+      const shades = ground.createImageData(180, 180);
+      for (let row = 0; row < 180; row++) {
+        for (let col = 0; col < 180; col++) {
+          const east = col * 2 - 180, north = row * 2 - 180;
+          const gradient = this.groundY(east + 1, north + 1) - this.groundY(east - 1, north - 1);
+          const light = Math.round(26 * Math.tanh(gradient));
+          shades.data.set([123 + light, 79 + light, 58 + light, 255], 4 * (row * 180 + col));
+        }
+      }
+      ground.putImageData(shades, 0, 0);
+    }
+    const at = (east, north) => [width / 2 + east * scale, height / 2 + north * scale];
+    ctx.fillStyle = "#271914";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(this.overviewTerrain, ...at(-180, -180), 360 * scale, 360 * scale);
+    for (const obstacle of this.world.colliders) {
+      if (!Number.isFinite(obstacle.radius)) continue;
+      ctx.beginPath();
+      ctx.arc(...at(obstacle.x, obstacle.z), obstacle.radius * scale, 0, Math.PI * 2);
+      ctx.fillStyle = obstacle.id === "EVA_LAVA_TUBES" ? "#e5794e" : "#593d30";
+      ctx.fill();
+    }
+    if (this.overviewRoute?.length > 1) {
+      const colors = { safe: "#65d8ff", no_return: "#ff8c36", unverified: "#b9a6d9" };
+      const route = this.overviewRoute;
+      const segments = this.overviewPnr?.segments ?? route.slice(1).map((_, from) => ({ from, to: from + 1 }));
+      ctx.lineWidth = 2;
+      for (const { from, to, state } of segments) {
+        ctx.beginPath();
+        ctx.moveTo(...at(route[from].x, route[from].z));
+        ctx.lineTo(...at(route[to].x, route[to].z));
+        ctx.strokeStyle = colors[state] ?? colors.safe;
+        ctx.stroke();
+      }
+    }
+    for (const mark of this.markers) {
+      if (mark.hidden || mark.collected) continue;
+      const point = this.toLocal(mark.e.lat, mark.e.lon);
+      ctx.fillStyle = "#efbd70";
+      ctx.fillRect(...at(point.x, point.z), 4, 4);
+    }
+    ctx.save();
+    ctx.translate(...at(x, z));
+    ctx.rotate(-this.character.bodyHeading);
+    ctx.beginPath();
+    ctx.moveTo(0, 9); ctx.lineTo(6, -6); ctx.lineTo(-6, -6);
+    ctx.closePath();
+    ctx.fillStyle = "#65d8ff";
+    ctx.fill();
+    ctx.restore();
   }
 
   updateCamera(dt) {

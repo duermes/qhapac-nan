@@ -88,7 +88,7 @@ def build_region(key: str, name: str, lat_min: float, lat_max: float, lon_min: f
         "created_at": _now(),
         "files": {"elevation": "elevation.npy"},
     }
-    (rdir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+    (rdir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return manifest
 
 
@@ -103,7 +103,7 @@ def write_focus_manifests(parent: dict, out_dir: Path = PROCESSED) -> list[dict]
              "note": "Sector de enfoque dentro de la macrorregión continua; comparte la malla del padre."}
         d = out_dir / key
         d.mkdir(parents=True, exist_ok=True)
-        (d / "manifest.json").write_text(json.dumps(m, indent=2, ensure_ascii=False))
+        (d / "manifest.json").write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
         out.append(m)
     return out
 
@@ -119,7 +119,7 @@ class RegionStore:
         if self.processed.exists():
             for p in sorted(self.processed.glob("*/manifest.json")):
                 try:
-                    m = json.loads(p.read_text())
+                    m = json.loads(p.read_text(encoding="utf-8"))
                     out[m["key"]] = m
                 except (json.JSONDecodeError, KeyError):
                     continue
@@ -185,7 +185,7 @@ def register_official_dataset(manifest_path: Path = MANIFEST) -> dict:
     }
     m = {"schema_version": "1.0", "datasets": []}
     if manifest_path.exists():
-        m = json.loads(manifest_path.read_text())
+        m = json.loads(manifest_path.read_text(encoding="utf-8"))
     m["datasets"] = [d for d in m.get("datasets", []) if d.get("id") != entry["id"]] + [entry]
-    manifest_path.write_text(json.dumps(m, indent=2, ensure_ascii=False))
+    manifest_path.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
     return entry

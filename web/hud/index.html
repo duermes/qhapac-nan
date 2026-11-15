@@ -14,10 +14,16 @@
 </head>
 <body data-guide="hud" class="hud" data-camera="first">
   <div id="scene" class="scene" aria-label="Escena 3D EVA"></div>
+  <section id="eva-load-error" class="hcard eva-load-error" role="alert" hidden>
+    <h2>Ñawi no pudo iniciar</h2><p id="eva-load-message"></p>
+    <button id="eva-retry" class="hbtn" type="button">Volver a intentar</button>
+    <a href="/home" class="hbtn">Volver al portal</a>
+  </section>
+  <div id="eva-2d-status" class="hcard eva-2d-status" role="status" hidden>Vista 2D · WebGL no disponible</div>
   <div class="visor-mask" aria-hidden="true"></div>
 
   <!-- top-left identity -->
-  <div class="hud-id"><div class="hud-brand"><span class="hud-brand-mark" aria-hidden="true"><span data-icon="brand"></span></span><b>ÑAWI</b><span class="hud-brand-sub">QHAPAQ ÑAN · KHIPU</span></div><span class="eva-pill"><i></i><span id="eva-id">EVA-01</span></span></div>
+  <div class="hud-id"><div class="hud-brand"><span class="hud-brand-mark" aria-hidden="true"><span data-icon="brand"></span></span><b>ÑAWI</b><span class="hud-brand-sub">Qhapaq Ñan · Khipu Engine</span></div><span class="eva-pill"><i></i><span id="eva-id">EVA-01</span></span></div>
 
   <!-- top vitals band -->
   <div class="vitals" role="group" aria-label="Signos vitales y consumibles">
@@ -30,6 +36,7 @@
   </div>
   <div class="tr-btns">
       <div class="qn-settings-host" data-guide-settings data-no-localize></div>
+    <a href="/home" class="hbtn" aria-label="Volver al portal" title="Volver al portal"><span data-icon="home"></span></a>
     <button id="camera-btn" class="hbtn" title="Vista externa. Pulsa C o toca la escena para volver"><span data-icon="camera"></span>Cámara</button>
     <button id="help-btn" class="hbtn" aria-expanded="false"><span data-icon="help"></span>Ayuda</button>
   </div>

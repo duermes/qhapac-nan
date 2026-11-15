@@ -131,9 +131,9 @@ export function markerSymbol(kind) {
 export const isVirtual = (entity) => ["astronaut", "rover"].includes(entity.kind)
   && (entity.virtual === true || entity.source === "user");
 
-export function brandBlock(sub) {
+export function brandBlock(name) {
   return `<div class="brand panel cut" role="banner">
     <span class="brand-mark">${icon("brand", "brand-mark")}</span>
-    <div><div class="brand-name">QHAPAQ ÑAN</div><div class="brand-sub">${sub}</div></div>
+    <div><div class="brand-name">${name}</div><div class="brand-sub">Qhapaq Ñan · Khipu Engine</div></div>
   </div>`;
 }

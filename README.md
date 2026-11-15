@@ -31,7 +31,7 @@ En el portal y en cada interfaz, abre **ES** o **EN** para elegir el idioma o in
 - **Chaski.** Pulsa el botón de capa para recorrer las vistas del mapa. Khipu Voz admite selección directa. El zoom está disponible en todos los modos. En Navegación el mapa sigue la posición y rumbo del rover. En Reconocer y Planificar se habilitan el paneo y el centrado. Los paneles se pueden plegar juntos o por ventana. En la demo puedes simular el movimiento del rover con WASD o las flechas del teclado.
 - **Ñawi.** Usa C para cambiar de perspectiva y E para interactuar con compañeros, instrumentos, muestras, equipos o la esclusa. El menú Demo muestra los controles de simulación bajo demanda. La elección de destino se hace por voz. En pantalla táctil, toca la escena externa para volver al visor.
 
-Para reemplazar las capturas de los monitores de Ñawi, guarda archivos JPEG en `web/hud/assets/monitors/` con estos nombres: `hatun-wasi.jpg` para Base Alfa y `chaski.jpg` para los rovers presurizado PR-01 y logístico RC-04. Las capturas incluidas usan formato 16:9.
+Para reemplazar las capturas de los monitores de Ñawi, guarda archivos JPEG en `web/hud/assets/monitors/` con estos nombres: `hatun-wasi.jpg` para Base Alfa y `chaski.jpg` para los rovers presurizado PR-01 y logístico RC-04. Los archivos con el sufijo `.en.jpg` corresponden al modo inglés. Las capturas incluidas usan formato 16:9.
 
 ## Verificación
 
