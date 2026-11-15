@@ -34,12 +34,14 @@ class MobileSettings(BaseModel):
 
 
 class RouteParams(BaseModel):
+    pnr_tolerance_m: float = Field(default=100, ge=1, le=2000)
+    pnr_max_evaluations: int = Field(default=128, ge=8, le=512)
     ltst_h: float = Field(default=13, ge=0, le=24)
     tau: float = Field(default=0.5, ge=0, le=10)
     min_temperature_c: float = Field(default=-105, ge=-170, le=80)
     max_temperature_c: float = Field(default=45, ge=-160, le=100)
     max_dust_tau: float = Field(default=3, gt=0, le=10)
-    min_light_w_m2: float = Field(default=0.1, gt=0, le=1000)
+    min_light_w_m2: float = Field(default=0.1, ge=0, le=1000)
     min_link_db: float = Field(default=0, ge=-40, le=40)
     max_blackout_s: float = Field(default=900, ge=0, le=7200)
     max_distance_m: float | None = Field(default=None, gt=0)

@@ -116,7 +116,7 @@ function refresh() {
   map.entities = [...entities.filter((e) => e.id !== S.assetId && (S.radar || !["poi", "sample"].includes(e.kind) || S.mode !== "navigate")), roverEntity()];
   map.recordedPaths = S.layer === "recorded_traverse" ? S.recordedPaths : [];
   map.routes = S.route ? [{ id: "route", points: S.route.points, color: "#65d8ff", width: 4,
-    segments: S.route.pnr?.show_pnr ? S.route.pnr.segments : null, pnr: S.route.pnr?.pnr_point }] : [];
+    segments: S.route.pnr?.show_pnr || S.route.pnr?.classification === "INDETERMINATE" ? S.route.pnr.segments : null, pnr: S.route.pnr?.pnr_point }] : [];
   S.layerDetail?.update();
   map.layers = Object.entries(S.layers).filter(([, on]) => on).map(([id]) => ({
     id, canvas: S.layerCanvas?.[id], opacity: 0.55, visible: true, stride: LAYER_OVERVIEW_STRIDE,
@@ -329,6 +329,7 @@ function updateGuide() {
 
 // ------------------------------------------------------------------ actions
 async function planTo(target, { silent, preserveOrigin } = {}) {
+  if (S.planning) { if (!silent) toast("El planificador está ocupado. Espera a que termine la solicitud actual.", "warn"); return null; }
   const revision = S.planRevision = (S.planRevision || 0) + 1;
   S.target = target;
   S.planning = true;
@@ -350,7 +351,7 @@ async function planTo(target, { silent, preserveOrigin } = {}) {
     if (revision !== S.planRevision) return null;
     S.route = route;
     S.routeError = null;
-    S.routeStatus = route.pnr?.show_pnr ? "Retorno no garantizado después del PNR" : "Retorno con reserva";
+    S.routeStatus = route.pnr?.classification === "INDETERMINATE" ? "Retorno no concluyente" : route.pnr?.show_pnr ? "Retorno no garantizado después del PNR" : "Retorno con reserva";
     if (!silent) toast(`Ruta a ${target.name} · ${fmt.m(route.metrics.distance_m)}`, "safe");
     return route;
   } catch (error) {
@@ -358,7 +359,8 @@ async function planTo(target, { silent, preserveOrigin } = {}) {
     S.route = null;
     S.routeError = error.body || { detail: error.message };
     const reasons = (S.routeError.reasons || []).map(({ detail }) => `<li>${esc(detail)}</li>`);
-    if (!silent || $("#inspect-card").dataset.routeDetail === "true") {
+    toast(S.routeError.detail || "No se encontró una ruta viable.", "danger", 7000);
+    {
       showInspect("Ruta inviable", `<div class="alert-card infeasible-card">${esc(S.routeError.detail)}${reasons.length > 1 ? `<ol>${reasons.join("")}</ol>` : ""}</div>`);
     }
     return null;

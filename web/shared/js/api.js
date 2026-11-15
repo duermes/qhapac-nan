@@ -7,7 +7,19 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, body, { timeout = 30000 } = {}) {
+const pending = new Map();
+function request(method, path, body, options = {}) {
+  const dedupe = method === "GET" || path.startsWith("/api/route");
+  const key = `${method}:${path}:${JSON.stringify(body)}`;
+  if (dedupe && pending.has(key)) return pending.get(key);
+  const result = performRequest(method, path, body, options);
+  if (dedupe) {
+    pending.set(key, result);
+    result.finally(() => pending.delete(key)).catch(() => {});
+  }
+  return result;
+}
+async function performRequest(method, path, body, { timeout = 30000 } = {}) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeout);
   try {

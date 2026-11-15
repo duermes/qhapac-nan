@@ -1,3 +1,4 @@
+import { translate } from "/static/shared/js/language.js";
 import * as THREE from "three";
 import { AssetRegistry, HUD_MANIFEST } from "./world-assets.js";
 export class Terrain3D {
@@ -583,18 +584,18 @@ export class Terrain3D {
         mCtx.strokeRect(8, 8, 496, 240);
         mCtx.fillStyle = '#00e5ff';
         mCtx.font = 'bold 22px monospace';
-        mCtx.fillText('HATUN WASI — QHAPAQ ÑAN', 24, 42);
+        mCtx.fillText(translate('HATUN WASI — QHAPAQ ÑAN'), 24, 42);
         mCtx.fillStyle = '#00e676';
         mCtx.font = '16px monospace';
-        mCtx.fillText('ESTADO GENERAL: PRESURIZACIÓN 101.3 kPa • 100% NOMINAL', 24, 80);
-        mCtx.fillText('MRO RELAY ORBITAL: ENLACE BANDA X CONECTADO (12 Mbps)', 24, 110);
-        mCtx.fillText('SOPORTE VITAL EVA: RACKS DE RECARGA O2/BAT ACTIVOS', 24, 140);
+        mCtx.fillText(translate('ESTADO GENERAL: PRESURIZACIÓN 101.3 kPa • 100% NOMINAL'), 24, 80);
+        mCtx.fillText(translate('MRO RELAY ORBITAL: ENLACE BANDA X CONECTADO (12 Mbps)'), 24, 110);
+        mCtx.fillText(translate('SOPORTE VITAL EVA: RACKS DE RECARGA O2/BAT ACTIVOS'), 24, 140);
         mCtx.fillStyle = '#ffb300';
-        mCtx.fillText('TELEMETRÍA ROVER: PR-01 ESTACIONADO | LRV-02 EN RUTA', 24, 175);
+        mCtx.fillText(translate('TELEMETRÍA ROVER: PR-01 ESTACIONADO | LRV-02 EN RUTA'), 24, 175);
         mCtx.fillStyle = '#80deea';
         mCtx.font = '14px monospace';
-        mCtx.fillText('SIMULACIÓN · HÁBITAT DE ENTRENAMIENTO EVA', 24, 210);
-        mCtx.fillText('Pulsa [E] junto a la esclusa para regresar al exterior.', 24, 232);
+        mCtx.fillText(translate('SIMULACIÓN · HÁBITAT DE ENTRENAMIENTO EVA'), 24, 210);
+        mCtx.fillText(translate('Pulsa [E] junto a la esclusa para regresar al exterior.'), 24, 232);
         this.monitorTexture = new THREE.CanvasTexture(monitorCanvas);
         const monitorMat = new THREE.MeshBasicMaterial({ map: this.monitorTexture });
         const monitorMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.2), monitorMat);

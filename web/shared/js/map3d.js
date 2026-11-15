@@ -2,9 +2,10 @@
 // tangent-plane metres; the 2D composite (relief + analytical layers) is draped
 // as a "mantle" texture on the same mesh; contour lines come from a shader whose
 // uniforms stay in sync with the camera distance.
+import { translate } from "./language.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
-import { ASSET_REGISTRY, markerKind } from "./icons.js";
+import { ASSET_REGISTRY, markerKind, markerSymbol, isVirtual } from "./icons.js";
 import { destination } from "./geo.js";
 
 export class Map3D {
@@ -36,6 +37,12 @@ export class Map3D {
     this.overlay = new THREE.Group();
     this.scene.add(this.overlay);
     this.markers = [];
+    document.addEventListener("qn:language", () => {
+      for (const marker of this.markers) marker.el.querySelector(".m3d-label").textContent = `${translate(marker.e.name)}${isVirtual(marker.e) ? " · V" : ""}`;
+    });
+    document.addEventListener("qn:icons", () => {
+      for (const marker of this.markers) marker.el.lastElementChild.innerHTML = markerSymbol(markerKind(marker.e));
+    });
     this.buildTerrain();
     this.setSun(315, 35);
     this.resetCamera();
@@ -202,7 +209,7 @@ export class Map3D {
       o.material.map?.dispose();
       o.material.dispose();
     });
-    const colors = { safe: 0x65d8ff, caution: 0x65d8ff, no_return: 0xff8c36 };
+    const colors = { safe: 0x65d8ff, caution: 0x65d8ff, no_return: 0xff8c36, unverified: 0xb9a6d9 };
     for (const route of routes) {
       if (route.visible === false || route.points?.length < 2) continue;
       const points = route.points.map((p) => this.toWorld(p.lat, p.lon));
@@ -340,7 +347,11 @@ export class Map3D {
       el.className = `m3d m3d-${e.kind}`;
       el.style.cssText = `position:absolute;transform:translate(-50%,calc(-100% + 4px));font:500 11px 'Chakra Petch';color:#f3ebdc;white-space:nowrap;text-align:center`;
       el.innerHTML = `<div class="m3d-label" data-no-localize style="background:rgba(16,22,18,.82);border:1px solid rgba(223,189,128,.25);padding:2px 6px"></div><div style="width:9px;height:9px;margin:2px auto 0;border:2px solid ${reg.color};border-radius:${["poi", "sample", "rover", "astronaut", "antenna"].includes(e.kind) ? "50%" : "0"};background:#0b100d"></div>`;
-      el.querySelector(".m3d-label").textContent = e.name;
+      el.querySelector(".m3d-label").textContent = `${translate(e.name)}${isVirtual(e) ? " · V" : ""}`;
+      const symbol = el.lastElementChild;
+      symbol.innerHTML = markerSymbol(markerKind(e));
+      symbol.style.cssText = `width:${e.primary ? 30 : 24}px;height:${e.primary ? 30 : 24}px;margin:3px auto;display:grid;place-items:center;color:${reg.color};background:#101612df;border:1px solid ${isVirtual(e) ? "#c49aff" : reg.color};border-radius:50%;${e.primary ? "box-shadow:0 0 20px 8px #ffe0a477;" : ""}`;
+      el.style.zIndex = e.primary ? "100" : "1";
       this.labelLayer.appendChild(el);
       return { e, el, rank: e.primary ? -1 : e.kind === "base" ? 0 : ["poi", "rover"].includes(e.kind) ? 1 : 2 };
     });
@@ -358,6 +369,8 @@ export class Map3D {
     const D = Math.max(this.g.widthM(), this.g.heightM());
     return Math.min(1.35, Math.max(0.75, 1.25 - Math.log10(Math.max(1, distance / (D * 0.05))) * 0.35));
   }
+
+  setContours(visible) { this.contoursVisible = visible; this.uniforms.uContours.value = visible ? 1 : 0; }
 
   frame() {
     this.controls.update();

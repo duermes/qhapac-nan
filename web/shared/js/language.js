@@ -1,13 +1,18 @@
 import { english, englishPatterns } from "./translations-en.js";
+import { correctionEnglish, correctionPatterns } from "./translations-corrections.js";
+Object.assign(english, correctionEnglish);
 
 const key = "qn-language";
 const attributes = ["aria-label", "title", "alt", "placeholder", "label"];
-const untouched = "script,style,svg,canvas,[contenteditable],[data-no-localize]";
+const untouched = "script,style,svg,[contenteditable],[data-no-localize]";
 const html = document.documentElement;
 let language = "es";
 try { if (localStorage.getItem(key) === "en") language = "en"; } catch {}
 let original = new WeakMap();
 const dictionary = new Map(Object.entries(english));
+const fragments = [...dictionary.keys()].filter(key => key.length > 3 && dictionary.get(key) !== key)
+  .sort((a,b) => b.length - a.length).map(key => key.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+const fragmentPattern = new RegExp(`(?<![\\p{L}])(?:${fragments.join("|")})(?![\\p{L}])`, "gu");
 const observer = new MutationObserver(updateMutations);
 
 export const currentLanguage = () => language;
@@ -18,13 +23,14 @@ export function translate(text) {
   if (!value) return text;
   let result = dictionary.get(value);
   if (result === undefined) {
-    for (const [pattern, replacement] of englishPatterns) {
+    for (const [pattern, replacement] of [...correctionPatterns, ...englishPatterns]) {
       if (!pattern.test(value)) continue;
       result = value.replace(pattern, replacement);
       break;
     }
   }
-  return result === undefined ? text : text.replace(value, () => result);
+  const output = result === undefined ? value : result;
+  return text.replace(value, () => output.replace(fragmentPattern, match => dictionary.get(match) || match));
 }
 
 function convert(node, property, value, assign) {

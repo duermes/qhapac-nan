@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable
+from threading import RLock
 
 import numpy as np
 
@@ -140,6 +141,18 @@ def L_roughness(ctx, p):
     return ctx.terrain.relief.copy()
 
 
+def cached_field(ctx, name, key, build):
+    cache = getattr(ctx, "_physical_fields", None)
+    if cache is None:
+        cache = ctx._physical_fields = {}
+    token = (name, key)
+    if token not in cache:
+        if len(cache) >= 12:
+            cache.pop(next(iter(cache)))
+        cache[token] = build()
+    return cache[token]
+
+
 def L_temperature(ctx, p):
     t = env.surface_temperature_k(float(p.get("ltst_h", 13.0)), ctx.terrain.filled(), float(p.get("tau", 0.5)),
                                   latitude_deg=float(p.get("lat") or 18.0))
@@ -156,10 +169,12 @@ def L_thermal_gradient(ctx, p):
 
 def L_insolation(ctx, p):
     sol = _solar(ctx, p)
-    sh = eph.terrain_shadow(ctx.terrain.filled(), ctx.terrain.geometry, sol["elevation_deg"], sol["azimuth_deg"], 40)
-    return eph.insolation_w_m2(ctx.terrain.filled(), np.nan_to_num(ctx.terrain.slope), ctx.terrain.aspect,
-                               sol["elevation_deg"], sol["azimuth_deg"], float(p.get("helio_au", 1.52)),
-                               float(p.get("tau", 0.5)), sh)
+    key = (sol["elevation_deg"], sol["azimuth_deg"], float(p.get("helio_au", 1.52)), float(p.get("tau", 0.5)))
+    def build():
+        sh = eph.terrain_shadow(ctx.terrain.filled(), ctx.terrain.geometry, key[0], key[1], 40)
+        return eph.insolation_w_m2(ctx.terrain.filled(), np.nan_to_num(ctx.terrain.slope), ctx.terrain.aspect,
+                                   key[0], key[1], key[2], key[3], sh)
+    return cached_field(ctx, "insolation", key, build)
 
 
 def L_shadow(ctx, p):
@@ -218,12 +233,15 @@ def telecom_margin_grid(ctx: LayerContext, p: dict, stride: int = 4, samples: in
     n0 = tc.BOLTZMANN_DBW + 10 * math.log10(500.0)
     margin = prx - n0 - 10 * math.log10(256000.0) - 4.5
     margin = margin - float(p.get("link_margin_offset_db", 0.0) or 0.0)
-    full = np.repeat(np.repeat(margin, stride, axis=0), stride, axis=1)[: terrain.shape[0], : terrain.shape[1]]
-    return full
+    # Bilinear display reconstruction of the sampled model, rather than 4x4 plateaus.
+    horizontal = np.array([np.interp(np.arange(terrain.shape[1]), cols, line) for line in margin])
+    return np.array([np.interp(np.arange(terrain.shape[0]), rows, line) for line in horizontal.T]).T
 
 
 def L_telecom(ctx, p):
-    return telecom_margin_grid(ctx, p)
+    stride = int(p.get("telecom_stride", 2))
+    key = json.dumps({k:v for k,v in p.items() if k in ("antenna", "receiver_height_m", "antenna_height_m", "link_margin_offset_db")},sort_keys=True)
+    return cached_field(ctx, "telecom", (key, stride), lambda: telecom_margin_grid(ctx, p, stride=stride))
 
 
 def L_slip(ctx, p):
@@ -385,8 +403,8 @@ def build_catalog(scenario: dict | None = None) -> dict[str, LayerDef]:
                  compute=lambda c, p: L_survival(c, {**p, "profile": "rover"}), range_hint=(0, 1)),
         LayerDef("isru", "Habitabilidad ISRU", "0-1", P.UNAVAILABLE, "ciencia",
                  "Requiere mapas de hidratación/hielo (CRISM, SHARAD) y coeficientes ISRU.",
-                 available=has_isru,
-                 unavailable_reason=None if has_isru else
+                 available=False,
+                 unavailable_reason=
                  "Faltan mapas cuantitativos de recursos extraíbles y coeficientes de rendimiento ISRU.",
                  colormap="science"),
     ]
@@ -399,6 +417,7 @@ class SnapshotManager:
         self.catalog = catalog or build_catalog(ctx.scenario)
         self.cache: dict[str, Snapshot] = {}
         self.max_items = max_items
+        self.lock = RLock()
 
     def list(self) -> list[dict]:
         return [d.describe() for d in self.catalog.values()]
@@ -413,6 +432,10 @@ class SnapshotManager:
         return p
 
     def snapshot(self, layer_id: str, params: dict | None = None) -> Snapshot:
+        with self.lock:
+            return self._snapshot(layer_id, params)
+
+    def _snapshot(self, layer_id: str, params: dict | None = None) -> Snapshot:
         if layer_id not in self.catalog:
             raise KeyError(layer_id)
         d = self.catalog[layer_id]

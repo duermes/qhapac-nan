@@ -43,8 +43,9 @@ def test_3d_proportional_scaling_and_synchronization():
     assert "ctx.map3d.drape(composite())" in JS
 
 
-def test_dynamic_risk_evaluation_exclusive_to_planning():
-    assert 'if (ctx.cur.mode === "plan" && !hit && !ctx.cur.addMode) inspectRisk(ll)' in read("console/js/decks.js")
+def test_dynamic_risk_evaluation_skips_new_point_creation():
+    assert 'if (!hit && !ctx.cur.addMode) inspectRisk(ll)' in read("console/js/decks.js")
+    assert 'if (on) ctx.decks?.risk.close()' in read("console/js/popover.js")
 
 
 def test_add_point_modal_and_popover_user_controls():

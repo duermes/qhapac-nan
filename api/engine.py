@@ -267,10 +267,15 @@ class Engine:
             forecast = navigation.TravelForecast(manager, link, {**params, "tau": tau}, profile, speed,
                                                  costmap.params.restrictions if costmap else None)
             issues.extend(forecast.violations(outbound, telecom=False, weather_cells=weather_cells))
-            if not issues and pnr["status"] != "infeasible":
+            if (not issues and pnr["status"] != "infeasible"
+                    and (params.get("max_distance_m") is None or metrics["distance_m"] <= params["max_distance_m"])
+                    and loss <= params.get("max_blackout_s", 900)):
+                return_maps = {}
                 def return_path(start, finish, elapsed_s):
-                    hour = forecast.hour(elapsed_s)
-                    _, return_map, _ = self.operational_costmap(region, profile, {**params, "ltst_h": hour}, asset=asset)
+                    hour = round(forecast.hour(elapsed_s) * 4) / 4 % 24
+                    if hour not in return_maps:
+                        _, return_maps[hour], _ = self.operational_costmap(region, profile, {**params, "ltst_h": hour}, asset=asset)
+                    return_map = return_maps[hour]
                     # Keep the current mission exclusions including session points and obstacles.
                     for code in ("hazard", "dust"):
                         denied = costmap.params.restrictions[code]
@@ -279,7 +284,9 @@ class Engine:
                     try:
                         cfg = RouterConfig(max_step_slope_deg=return_map.params.slope_limit())
                         return plan(terrain, return_map, start, finish, cfg)["points"]
-                    except RouteInfeasible:
+                    except RouteInfeasible as error:
+                        if error.reason == "search_budget":
+                            raise TimeoutError from error
                         return []
                 points, pnr = navigation.check_retreat(points, pnr, forecast, inventory, reserve,
                                                        return_prefix, return_path)
@@ -311,7 +318,7 @@ class Engine:
         result = {"feasible": True, "region_key": region, "profile": profile,
                   "asset_id": asset["id"] if profile and asset else None, "static_origin": profile is None,
                   "direct": {"distance_m": distance, "points": [{"lat": lat, "lon": lon} for lat, lon in (o, d)]},
-                  "variants": [], "recommended": None, "operational_route": True, "route_model": 2, "costmap_version": self.swarm.costmap_version}
+                  "variants": [], "recommended": None, "operational_route": True, "route_model": 3, "costmap_version": self.swarm.costmap_version}
         if profile is None:
             return result
 

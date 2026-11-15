@@ -1,7 +1,7 @@
 // Floating decks: layers, legend, metrics, risk inspector and nearby POIs.
 import { api } from "/static/shared/js/api.js";
 import { fmt, haversine } from "/static/shared/js/geo.js";
-import { ASSET_REGISTRY, icon, markerKind } from "/static/shared/js/icons.js";
+import { ASSET_REGISTRY, icon, markerKind, markerSymbol } from "/static/shared/js/icons.js";
 import { layerGrid } from "/static/shared/js/khipu-client.js";
 import { LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
 import { LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.js";
@@ -35,7 +35,8 @@ export async function initDecks(c) {
   ctx.on("session", async () => { await restoreLayers(); renderLayers(); renderLegend(); });
   ctx.on("entities", () => { if (!legend.hidden) renderLegend(); });
   ctx.on("route", ({ traverse }) => { if (!metrics.hidden) renderMetrics(traverse); if (!nearby.hidden) { nearby.variant = null; renderNearby(); } });
-  ctx.on("mapclick", ({ ll, hit }) => { if (ctx.cur.mode === "plan" && !hit && !ctx.cur.addMode) inspectRisk(ll); });
+  ctx.on("mapclick", ({ ll, hit }) => { if (!hit && !ctx.cur.addMode) inspectRisk(ll); });
+  document.addEventListener("qn:icons", () => { if (!legend.hidden) renderLegend(); });
   await restoreLayers();
 }
 
@@ -160,7 +161,10 @@ function renderLayers() {
   deck.body.innerHTML = `<div class="layer-top">
       <span class="badge ${session.eyes.analyze ? "live" : "unavailable"}">${session.eyes.analyze ? "Capas habilitadas" : "Capas ocultas en el mapa"}</span>
       <button class="btn" id="rt-restore" ${anyTemporal ? "" : "disabled"}>${icon("reset")} Tiempo real</button></div>`
-    + Object.entries(cats).map(([category, defs]) => `<div class="kicker layer-category">${esc(category)}</div>` + defs.map((def) => {
+    + `<div class="layer-category-filter"><label class="label" for="layer-category">Categorías de capas</label>
+       <select class="select" id="layer-category"><option value="all">Todas las categorías</option>${Object.keys(cats).map(category=>`<option value="${esc(category)}" ${deck.category===category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select>
+       <button class="btn" data-category-visibility="show">Mostrar categoría</button><button class="btn" data-category-visibility="hide">Ocultar categoría</button></div>`
+    + Object.entries(cats).filter(([category])=>!deck.category || deck.category==="all" || category===deck.category).map(([category, defs]) => `<div class="kicker layer-category">${esc(category)}</div>` + defs.map((def) => {
       const layer = session.layers[def.id] || {};
       const ramp = LEGEND_STOPS(def.colormap).join(",");
       const inputs = (def.inputs || []).map((input) => input === "Topografía MOLA" ? "NASA · MOLA" : input);
@@ -180,9 +184,16 @@ function renderLayers() {
           ${def.classes ? classLegend(def.classes) : ""}
           <p class="dim small">${esc(def.description)}${mixed ? " Incluye datos del escenario sintético." : ""}</p>
           ${layer.simulation ? '<span class="badge sim">Contingencia activa</span>' : ""}
-          </details>` : `<p class="small dim">${esc(def.unavailable_reason)}</p>`}
+          </details>` : `<p class="small dim">${esc(def.unavailable_reason)}</p>${def.id === "isru" ? `<details><summary>Diagnóstico de disponibilidad</summary><p class="small">No es un fallo de descarga de esta pantalla. El manifiesto local no declara mapas cuantitativos de hielo o hidratación y faltan coeficientes de extracción. Las detecciones minerales de Mars Trek no equivalen a recursos extraíbles.</p><b>Verificación manual</b><p class="small">Revisa data/official_kickoff/manifest.json y las fuentes CRISM/SHARAD, confirma cobertura y unidades, registra los archivos locales e integra los coeficientes antes de habilitar ISRU.</p></details>` : ""}`}
       </div>`;
     }).join("")).join("");
+  $("#layer-category", deck.body).addEventListener("change", event=>{ deck.category=event.target.value; renderLayers(); });
+  deck.body.querySelectorAll("[data-category-visibility]").forEach(button=>button.onclick=async()=>{
+    const visible=button.dataset.categoryVisibility==="show";
+    const definitions=Object.values(ctx.catalog).filter(def=>def.available && (!deck.category || deck.category==="all" || def.category===deck.category));
+    button.disabled=true;
+    for (const def of definitions) await setLayer(def.id,visible);
+  });
   $("#rt-restore", deck.body)?.addEventListener("click", restoreRealtime);
   $$("[data-layer]", deck.body).forEach((row) => {
     const id = row.dataset.layer;
@@ -214,8 +225,8 @@ function renderLegend() {
   const hidden = new Set(s.hidden);
   const visibleLayers = Object.entries(s.layers).filter(([, L]) => s.eyes.analyze && L.visible).map(([id]) => ctx.catalog[id]).filter(Boolean);
   const item = (kind, label, color, round = false) => {
-    const shown = kind === "recorded_traverse" ? !!s.recordedTraverse : !hidden.has(kind);
-    return `<div class="legend-item"><span class="sw" style="border-color:${color};border-radius:${round ? "50%" : "0"}"></span>
+    const shown = kind === "contours" ? s.contours !== false : kind === "recorded_traverse" ? !!s.recordedTraverse : !hidden.has(kind);
+    return `<div class="legend-item"><span class="sw" style="color:${color};border:0;display:grid;place-items:center">${ASSET_REGISTRY[kind] ? markerSymbol(kind) : icon(kind === "contours" ? "layers" : "route")}</span>
       <span>${esc(label)}</span>
       <button class="btn btn-icon" type="button" data-kind="${kind}" aria-pressed="${shown}"
         aria-label="Mostrar u ocultar ${esc(label)}">${icon(shown ? "eye" : "eyeoff")}</button></div>`;
@@ -225,7 +236,9 @@ function renderLegend() {
       const asset = ASSET_REGISTRY[kind] || ASSET_REGISTRY.waypoint;
       return item(kind, asset.label, asset.color, ["poi", "sample", "rover", "astronaut", "antenna", "rover_sample", "orbital"].includes(kind));
     }).join("")
-    + item("hazard", "Zonas de exclusión (sintéticas)", "var(--danger)", true)
+    + item("hazard", "Zonas de exclusión", "var(--danger)", true)
+    + item("contours", "Curvas de nivel", "#c9c0a8")
+    + `<div class="legend-item"><span style="color:#c49aff">V</span><span>Activo virtual</span></div>`
     + `<hr class="joint"/><div class="kicker">Rutas</div>
       <div class="legend-item"><span class="sw" style="border-color:var(--route-direct);border-style:dashed;height:3px"></span>Ruta directa (euclídea)</div>
       <div class="legend-item"><span class="sw" style="border-color:#65d8ff;height:3px"></span>Retorno con reserva</div>
@@ -239,14 +252,17 @@ function renderLegend() {
   $$("[data-kind]", deck.body).forEach((i) => i.addEventListener("click", () => {
     const set = new Set(s.hidden);
     const kind = i.dataset.kind;
-    if (kind === "recorded_traverse") s.recordedTraverse = !s.recordedTraverse;
+    if (kind === "contours") s.contours = s.contours === false;
+    else if (kind === "recorded_traverse") s.recordedTraverse = !s.recordedTraverse;
     else if (set.has(kind)) set.delete(kind);
     else set.add(kind);
-    const shown = kind === "recorded_traverse" ? s.recordedTraverse : !set.has(kind);
+    const shown = kind === "contours" ? s.contours !== false : kind === "recorded_traverse" ? s.recordedTraverse : !set.has(kind);
     i.setAttribute("aria-pressed", String(shown));
     i.innerHTML = icon(shown ? "eye" : "eyeoff");
     s.hidden = [...set];
     persist();
+    ctx.map2d.opts.contours = s.contours !== false;
+    ctx.map3d?.setContours?.(s.contours !== false);
     refreshScene();
   }));
 }
@@ -275,7 +291,8 @@ function renderMetrics(t) {
   const budget = p?.resource_margins?.[p.limiting_resource];
   const pnrHtml = !p ? `<div class="dim">Métricas de rover/EVA omitidas: ${esc(r.metrics_suppressed_reason || "origen estático")}</div>`
     : `<dl class="kv pnr-eval">
-        <dt>Estado</dt><dd class="${p.status === "round_trip_safe" ? "state-go" : p.status === "infeasible" ? "state-abort" : "state-caution"}">${{ round_trip_safe: "Ida y vuelta segura", pnr_exceeded: "Retorno no garantizado después del PNR", infeasible: "Inviable" }[p.status]}</dd>
+        <dt>Estado</dt><dd class="${p.status === "round_trip_safe" ? "state-go" : p.status === "infeasible" ? "state-abort" : "state-caution"}">${{ round_trip_safe: "Ida y vuelta segura", pnr_exceeded: "Retorno no garantizado después del PNR", infeasible: "Inviable", indeterminate: "Retorno no concluyente" }[p.status]}</dd>
+        ${p.classification === "INDETERMINATE" ? '<dt>Cobertura</dt><dd>Análisis incompleto: aumenta el presupuesto o reduce el tramo.</dd>' : ""}
         <dt>Recurso limitante</dt><dd>${esc({ o2_kg: "Oxígeno", water_kg: "Agua", battery_wh: "Batería" }[p.limiting_resource || p.resource])}</dd>
         <dt>Disponible</dt><dd>${fmt.num(budget?.available ?? p.available, 2)}</dd>
         <dt>Reserva</dt><dd>${fmt.num(budget?.reserve ?? p.reserve, 2)}</dd>
@@ -283,6 +300,8 @@ function renderMetrics(t) {
         <dt>Asimetría</dt><dd>${fmt.num(budget ? budget.return - budget.outbound : p.asymmetry, 2)}</dd>
         <dt>Margen ida y vuelta</dt><dd>${fmt.num(p.round_trip_margin, 2)}</dd>
         ${p.show_pnr && p.pnr_point ? `<dt>Punto de no retorno</dt><dd>${fmt.m(p.pnr_point.distance_m)} · ${p.pnr_point.lat.toFixed(4)}, ${p.pnr_point.lon.toFixed(4)}</dd>` : ""}
+        ${p.return_state ? `<dt>Recursos al alcanzar el PNR</dt><dd>${Object.entries(p.return_state.remaining).map(([key,value]) => `${{battery_wh:"Batería (Wh)",o2_kg:"Oxígeno (kg)",water_kg:"Agua (kg)"}[key] || key}: ${fmt.num(value,2)}`).join(" · ")}</dd><dt>Margen en el PNR</dt><dd>${fmt.num(p.return_state.margins[p.limiting_resource],2)}</dd>` : ""}
+        <dt>Precisión espacial PNR (m)</dt><dd>${fmt.num(p.tolerance_m,0)}</dd><dt>Evaluaciones</dt><dd>${p.evaluations ?? "—"}</dd>
         ${p.return_reasons?.length ? `<dt>Condiciones de retorno</dt><dd>${p.return_reasons.map(({ detail }) => esc(detail)).join(" · ")}</dd>` : ""}
       </dl>`;
   deck.body.innerHTML = `<div class="dim" style="font-size:11px;margin-bottom:6px">${esc(t.name)} · perfil ${esc(profile)} · límite de pendiente ${fmt.num(r.slope_limit_deg, 0)}°${r.walkback_limit_m ? ` · walkback ${r.walkback_limit_m} m` : ""}</div>
@@ -310,6 +329,7 @@ async function inspectRisk(ll) {
   try {
     const r = await api.risk({ lat: ll.lat, lon: ll.lon, region_key: ctx.region.key, profile: "rover", ltst_h: L?.ltst_h });
     if (!r.inside || r.no_data) { deck.body.innerHTML = `<div class="empty-state">${esc(r.message)}</div>`; return; }
+    if (ctx.cur.addMode || deck.hidden) return;
     deck.body.innerHTML = `<dl class="kv"><dt>Posición</dt><dd>${r.lat.toFixed(4)}°N ${r.lon.toFixed(4)}°E</dd><dt>Elevación</dt><dd>${fmt.num(r.elevation_m, 0)} m</dd>
       <dt>Nivel</dt><dd class="lvl-${esc(r.tier_name)}">${esc(r.tier_name)}</dd><dt>Límite (rover)</dt><dd>${r.slope_limit_deg}°</dd></dl><hr class="joint"/>
       <div class="risk-list">${r.factors.map((f) => `<div class="risk-item"><span>${esc(f.label)} ${provBadge(f.source)}</span><span class="lvl lvl-${esc(f.level)}">${esc(f.level)}</span>

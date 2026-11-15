@@ -186,7 +186,7 @@ export class CharacterController {
                 this.currentSlopeDeg = 0;
                 this.currentSpeed = this.baseSpeed * 0.9;
             }
-            const traversable = this.isInsideBase || Math.abs(this.currentSlopeDeg) <= 25;
+            const traversable = this.isInsideBase || this.currentSlopeDeg <= 25; // Steep descent remains possible; uphill stays limited.
             if (traversable && !this.checkCollision(nextX, nextZ)) {
                 this.updatePosition(nextX, nextZ);
             }

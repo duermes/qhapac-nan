@@ -3,13 +3,19 @@ import { renderLayer } from "./raster.js";
 
 export const LAYER_OVERVIEW_STRIDE = 4;
 
+export function layerResolution(zoom) {
+  return zoom < 3 ? 4 : zoom < 5 ? 3 : zoom < 7 ? 2 : 1;
+}
+
 export function layerViewport(map, view3d) {
   const { grid } = map.region;
-  if (!view3d && map.cam.scale < 5) return null;
+  const zoom = view3d ? grid.dxC / Math.max(1e-9, view3d.metersPerPixel()) : map.cam.scale / map.minScale;
+  const stride = layerResolution(zoom);
+  if (stride === LAYER_OVERVIEW_STRIDE) return null;
   let corners;
   if (view3d) {
     const mpp = view3d.metersPerPixel();
-    if (mpp > grid.dxC / 5) return null;
+
     const { x, z } = view3d.controls.target;
     const { lat, lon } = grid.fromXZ(x, z);
     const { r, c } = grid.toRC(lat, lon);
@@ -22,17 +28,21 @@ export function layerViewport(map, view3d) {
   const bounds = (values, size) => {
     const lo = Math.max(0, Math.floor(Math.min(...values) / 16) * 16 - 8);
     const hi = Math.min(size, Math.ceil(Math.max(...values) / 16) * 16 + 8);
-    if (hi - lo <= 256) return [lo, Math.max(0, hi - lo)];
-    const center = Math.floor((lo + hi) / 32) * 16;
-    return [center - 128, 256];
+    return [lo, Math.max(0, hi - lo)];
   };
   const [row, rows] = bounds(corners.map((p) => p.row), grid.rows);
   const [col, cols] = bounds(corners.map((p) => p.col), grid.cols);
-  return rows && cols ? { row, col, rows, cols, stride: 1 } : null;
+  return rows && cols ? { row, col, rows, cols, stride } : null;
 }
 
 export function adaptiveLayers(getState, repaint) {
-  let timer, lastSignature, revision = 0;
+  let timer, lastSignature, revision = 0, busy = false, queued = null;
+  const run = async (job) => {
+    if (busy) { queued = job; return; }
+    busy = true;
+    try { await job(); }
+    finally { busy = false; const latest = queued; queued = null; if (latest) run(latest); }
+  };
   const details = new Map();
   return {
     details,
@@ -53,21 +63,22 @@ export function adaptiveLayers(getState, repaint) {
       }
       if (removed) queueMicrotask(repaint);
       if (!window || !layers.length) return;
-      timer = setTimeout(async () => {
+      timer = setTimeout(() => run(async () => {
         let changed = false;
-        await Promise.all(layers.map(async ({ id, key, params }) => {
+        for (const { id, key, params } of layers) {
+          if (current !== revision) break;
           const tileKey = JSON.stringify([key, window]);
-          if (details.get(id)?.tileKey === tileKey) return;
+          if (details.get(id)?.tileKey === tileKey) continue;
           try {
             const tile = await layerGrid(region, id, { ...params, ...window });
-            if (current !== revision || !tile.available || !tile.decoded) return;
+            if (current !== revision || !tile.available || !tile.decoded) continue;
             details.set(id, { ...window, tileKey, key, width: window.cols, height: window.rows,
               canvas: renderLayer(tile.decoded, tile.layer.colormap, id, ...tile.color_domain, tile.layer.classes) });
             changed = true;
           } catch { /* retain the smoothed overview if the visible patch is unavailable */ }
-        }));
+        }
         if (current === revision && changed) repaint();
-      }, 130);
+      }), 130);
     },
   };
 }

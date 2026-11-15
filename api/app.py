@@ -8,6 +8,7 @@ import binascii
 import math
 import os
 import time
+from threading import BoundedSemaphore
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,16 @@ PAGES = {"home": "home/index.html", "console": "console/index.html", "rover": "r
 
 app = FastAPI(title="Qhapaq Ñan — Khipu API", version="1.0.0")
 engine = Engine(Path(os.environ["QN_STATE_DIR"]) if os.environ.get("QN_STATE_DIR") else None)
+planning_gate = BoundedSemaphore(1)
+
+
+def bounded_plan(callback, req):
+    if not planning_gate.acquire(blocking=False):
+        raise HTTPException(429, "El planificador está ocupado. Espera a que termine la solicitud actual.", headers={"Retry-After": "2"})
+    try:
+        return ok(callback(req.model_dump()))
+    finally:
+        planning_gate.release()
 
 
 def _clean(o):
@@ -103,6 +114,12 @@ def hud():
 
 
 app.mount("/static", StaticFiles(directory=WEB), name="static")
+
+
+@app.get("/api/map-icons")
+def map_icons():
+    directory = WEB / "shared" / "assets" / "markers"
+    return {"kinds": [path.stem for path in directory.glob("*.svg") if path.is_file()]}
 
 # ------------------------------------------------------------------ core
 
@@ -182,12 +199,12 @@ def mars_time(lon: float = 77.45, lat: float = 18.44):
 
 @app.post("/api/route")
 def route(req: S.RouteRequest):
-    return ok(engine.plan_route(req.model_dump()))
+    return bounded_plan(engine.plan_route, req)
 
 
 @app.post("/api/route/dynamic_replan")
 def dynamic_replan(req: S.ReplanRequest):
-    return ok(engine.dynamic_replan(req.model_dump()))
+    return bounded_plan(engine.dynamic_replan, req)
 
 
 @app.post("/api/costmap")
@@ -297,7 +314,7 @@ def _rt(mgr):
 @app.get("/api/layers/{field_id}")
 def layer_snapshot(field_id: str, region_key: str | None = None, stride: int = Query(2, ge=1, le=16),
                    row: int | None = Query(None, ge=0), col: int | None = Query(None, ge=0),
-                   rows: int | None = Query(None, ge=1, le=256), cols: int | None = Query(None, ge=1, le=256),
+                   rows: int | None = Query(None, ge=1, le=1024), cols: int | None = Query(None, ge=1, le=1024),
                    ltst_h: float | None = Query(None, ge=0, le=24),
                    tau: float | None = Query(None, ge=0, le=10),
                    alpha: float | None = Query(None, ge=0, le=1),
@@ -325,6 +342,8 @@ def layer_snapshot(field_id: str, region_key: str | None = None, stride: int = Q
             params["tau"] = ov["tau"]
         if field_id in ("telecom", "survival_astronaut", "survival_rover"):
             params["link_margin_offset_db"] = (link_margin_offset_db or 0) - ov["link_margin_db"]
+    if field_id == "telecom":
+        params["telecom_stride"] = 1 if row is not None and stride == 1 else min(4, stride)
     snap = mgr.snapshot(field_id, {k: v for k, v in params.items() if v is not None and v is not False})
     stats = snap.stats()
     lo, hi = d.range_hint or (stats["min"], stats["max"])

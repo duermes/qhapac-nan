@@ -90,7 +90,8 @@ export function drawLayer(ctx, layer) {
   const width = layer.width ?? canvas.width * stride;
   const height = layer.height ?? canvas.height * stride;
   ctx.save();
-  ctx.imageSmoothingEnabled = !isCategoricalLayer(id);
+  ctx.imageSmoothingEnabled = id === "hazard" || !isCategoricalLayer(id);
+  ctx.imageSmoothingQuality = "high";
   ctx.globalAlpha = opacity;
   if (detail) {
     ctx.save();

@@ -31,6 +31,9 @@ async function boot() {
     $("#eva-id").textContent = EVA_ID.replace("_", "-");
     scene = new EvaScene($("#scene"), region, { lat: base.lat, lon: base.lon });
     H.scene = scene;
+    const trainingZone = scene.toLatLon(scene.character.position.x + 25, scene.character.position.z + 15);
+    scenario.hazards = [...(scenario.hazards || []), {id:"EVA_TRAINING_HAZARD", name:"Zona de riesgo de entrenamiento (simulada)",
+      ...trainingZone, radius_m:8, warning_distance_m:12, provenance:"synthetic"}];
     H.x = scene.character.position.x;
     H.z = scene.character.position.z;
     const half = scene.world.gridSize / 2 - 4;
@@ -67,7 +70,7 @@ async function boot() {
     api.harness().then((h) => { simBanner(h.simulation); if (h.active.some((a) => a.kind === "suit_leak"))
         vit.leak = 2.2; }).catch(() => { });
     renderHelp();
-    await planToTarget(true);
+    planToTarget(true);
     let last = performance.now();
     const loop = (t) => {
         const dt = Math.min(0.1, (t - last) / 1000);
@@ -84,7 +87,7 @@ const pos = () => scene.toLatLon(H.x, H.z);
 const target = () => H.targets[H.ti];
 function step(dt) {
     scene.character.updatePosition(H.x, H.z);
-    const state = scene.move(dt * H.rate, H.keys, H.sos || H.resupplying, vit.effort.staminaPct, dt);
+    const state = scene.move(dt * H.rate, H.keys, H.sos || H.resupplying || !!document.querySelector(".modal-backdrop"), vit.effort.staminaPct, dt);
     H.x = state.x;
     H.z = state.z;
     H.speed = state.speed;
@@ -116,7 +119,7 @@ function panels() {
     } else $("#director").hidden = true;
     const fov = entities.filter((x) => x.id !== EVA_ID && !H.samples.includes(x.id) && !H.inside).map((x) => ({ x, d: haversine(p.lat, p.lon, x.lat, x.lon), rel: ((bearing(p.lat, p.lon, x.lat, x.lon) - hdg + 540) % 360) - 180 }))
         .filter((o) => Math.abs(o.rel) <= 45 && o.d <= 2500 && (!H.filter || H.filter.includes(o.x.kind))).sort((a, b) => a.d - b.d).slice(0, 10);
-    $("#fov-list").innerHTML = fov.length ? fov.map((o) => { const reg = ASSET_REGISTRY[o.x.kind] || ASSET_REGISTRY.poi; return `<div class="fov-item ${t && o.x.id === t.id ? "active" : ""}" style="color:${reg.color}">${icon(reg.icon)}<span class="n" data-no-localize>${esc(o.x.name)}</span><span class="d">${fmt.m(o.d)}</span></div>`; }).join("")
+    $("#fov-list").innerHTML = fov.length ? fov.map((o) => { const reg = ASSET_REGISTRY[o.x.kind] || ASSET_REGISTRY.poi; return `<div class="fov-item ${t && o.x.id === t.id ? "active" : ""}" style="color:${reg.color}">${icon(reg.icon)}<span class="n">${esc(o.x.name)}</span><span class="d">${fmt.m(o.d)}</span></div>`; }).join("")
         : `<div class="small dim">Nada en el campo visual${H.filter ? " (filtro activo)" : ""}</div>`;
     scene.markers.forEach((m) => { m.hidden = H.filter ? !H.filter.includes(m.e.kind) : false; });
     const dBase = base ? haversine(p.lat, p.lon, base.lat, base.lon) : Infinity;
@@ -182,7 +185,7 @@ async function slow() {
     for (const hz of scenario.hazards) {
       const distance = haversine(p.lat, p.lon, hz.lat, hz.lon) - hz.radius_m;
       if (distance < 0) alerts.push({ level: "critical", code: "HAZARD_IN", text: `Dentro de ${hz.name}` });
-      else if (distance < 250) alerts.push({ level: "warning", code: "HAZARD_NEAR", text: `${hz.name} a ${distance.toFixed(0)} m` });
+      else if (distance < (hz.warning_distance_m ?? 250)) alerts.push({ level: "warning", code: "HAZARD_NEAR", text: `${hz.name} a ${distance.toFixed(0)} m` });
     }
     const hazard = scene.character.proximityHazard;
     if (!H.inside && hazard.hasHazard) alerts.push({ level: "warning", code: "TERRAIN", text: hazard.message });
@@ -225,6 +228,7 @@ function relief() {
 }
 
 async function planToTarget(silent) {
+  if (H.planning) { H.replanPending = true; return null; }
   const t = target();
   if (!t || H.inside || H.samples.includes(t.id)) {
     if (!silent) eventAlert("ROUTE", H.inside ? "Sal de la base para iniciar la guía." : "No hay un objetivo disponible.");
@@ -246,7 +250,7 @@ async function planToTarget(silent) {
     H.lastPlannedO2 = vit.o2_kg;
     H.routeError = null;
     scene.setRoute(route.points, route.pnr);
-    if (!silent && !voice?.listening) toast(`Ruta Khipu: ${fmt.m(route.metrics.distance_m)} · ${route.pnr.status === "round_trip_safe" ? "retorno con reserva" : "reserva insuficiente"}`, route.pnr.status === "round_trip_safe" ? "safe" : "danger");
+    if (!silent && !voice?.listening) toast(`Ruta Khipu: ${fmt.m(route.metrics.distance_m)} · ${route.pnr.classification === "INDETERMINATE" ? "retorno no concluyente" : route.pnr.status === "round_trip_safe" ? "retorno con reserva" : "reserva insuficiente"}`, route.pnr.status === "round_trip_safe" ? "safe" : "danger");
     return route;
   } catch (e) {
     if (version !== H.planVersion) return;
@@ -255,11 +259,19 @@ async function planToTarget(silent) {
     scene.setRoute(null);
     eventAlert("ROUTE", e.message);
     return null;
-  } finally { if (version === H.planVersion) H.planning = false; }
+  } finally {
+    if (version === H.planVersion) {
+      H.planning = false;
+      if (H.replanPending) { H.replanPending = false; queueMicrotask(() => planToTarget(true)); }
+    }
+  }
 }
 
 async function interact(key) {
-  if (H.resupplying || scene.cameraMode !== "first") return;
+  if (H.resupplying || H.interacting || document.querySelector(".modal-backdrop") || scene.cameraMode !== "first") return;
+  H.keys.clear();
+  H.interacting = true;
+  try {
   if (H.prompt === "base") {
     if (!scene.character.toggleBaseAirlock()) return;
     H.keys.clear();
@@ -352,6 +364,7 @@ async function interact(key) {
     panels();
     slow();
   } else toast("Acércate a una muestra, un activo o la esclusa", "", 1500);
+  } finally { H.interacting = false; }
 }
 
 function cycleCamera() {
@@ -380,7 +393,7 @@ async function handleIntent(result) {
             return `Route to ${next.name}. Distance ${fmt.m(route.metrics.distance_m)}. ${returnNote}.`;
         }
         return `Ruta a ${next.name}. Distancia ${fmt.m(route.metrics.distance_m)}. ${marker
-            ? "Punto de no retorno a " + fmt.m(marker.distance_m) : "Retorno con reserva en todo el recorrido"}.`;
+            ? "Punto de no retorno a " + fmt.m(marker.distance_m) : route.pnr?.classification === "INDETERMINATE" ? "Retorno no concluyente" : "Retorno con reserva en todo el recorrido"}.`;
     }
     if (intent === "poi_info") {
         const point = H.targets.find((candidate) => candidate.id === result.poi_id);

@@ -84,7 +84,7 @@ def console(browser):
     assert page.evaluate("qn.cur.layers.dust.paramsUsed.tau") == 0.83
     page.wait_for_function("qn.map2d.layers.some(layer => layer.detail?.stride === 1)")
     grid = page.evaluate("qn.map2d.layers.find(layer => layer.id === 'dust').detail")
-    assert grid["width"] <= 256 and grid["height"] <= 256
+    assert grid["width"] <= 1024 and grid["height"] <= 1024
     assert page.evaluate("""async () => {
       const { renderLayer } = await import('/static/shared/js/raster.js');
       const grid = { rows: 1, cols: 4, data: new Float32Array([-10, 0, 20, NaN]), min: 0, max: 3 };

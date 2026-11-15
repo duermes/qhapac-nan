@@ -190,3 +190,10 @@
 .legend-item .btn-icon[aria-pressed="false"] { color: var(--text-3); }
 .route-toggle .sw.direct { border-color: #ebcf7f; border-top-style: dotted; background: none; }
 .route-toggle .sw.calcd { background: #65d8ff; border-color: #65d8ff; }
+
+.point-picker { position:relative; }
+.point-picker > summary { cursor:pointer; list-style:none; }
+.point-picker-body { position:absolute; top:100%; left:0; right:0; z-index:50; max-height:320px; overflow:auto; padding:10px; background:#171e18; border:1px solid var(--joint); box-shadow:0 12px 24px #0008; }
+.point-picker-groups summary { padding:8px 4px; cursor:pointer; color:var(--gold); }
+.point-picker-groups .btn { display:block; width:100%; text-align:left; white-space:normal; margin:3px 0; }
+.layer-category-filter { display:flex; flex-wrap:wrap; gap:5px; margin:10px 0; }

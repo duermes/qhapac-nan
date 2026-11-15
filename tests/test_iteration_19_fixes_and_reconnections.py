@@ -24,7 +24,11 @@ def test_no_dashed_perimeter_lines():
 
 def test_click_inspection_displays_point_information():
     p = read("console/js/popover.js")
-    assert "function openPoint" in p and "Elevación MOLA" in p and "Pendiente" in p
+    # ADJ-011: empty terrain uses one risk inspector; entity editing keeps its popover.
+    assert "function openPoint" not in p
+    risk = read("console/js/decks.js")
+    assert "async function inspectRisk" in risk and "elevation_m" in risk and "slope_limit_deg" in risk
+    assert "function openEntity" in p
 
 
 @needs_mola

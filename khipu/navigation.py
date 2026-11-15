@@ -189,7 +189,6 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
     prefix = list(reversed(prefix or []))
     profile, speed = forecast.profile, forecast.speed
     budgets = {k: available - capacity * reserve[k] for k, (available, capacity) in inventory.items()}
-    original_split = pnr["pnr_index"]
     home = prefix[-1] if prefix else points[0]
 
     def check(path):
@@ -209,76 +208,63 @@ def check_retreat(points, pnr, forecast, inventory, reserve, prefix=None, find_r
         problems, margins, limiting, consumed = assess(reverse)
         if problems and find_return and path[-1]["distance_m"] > 1:
             start = path[-1]
-            direct = haversine_m(start["lat"], start["lon"], home["lat"], home["lon"])
-            back_length = path[-1]["distance_m"] + (route_metrics(prefix, profile, speed)["distance_m"] if prefix else 0)
-            # A detour may restore resources. For environmental events also test a different corridor.
-            if any(p["code"] != "resources" for p in problems) or back_length > direct * 1.08:
-                alternative = find_return((start["lat"], start["lon"]), (home["lat"], home["lon"]), elapsed)
-                if alternative:
-                    other = assess(alternative)
-                    if not other[0]:
-                        return other
+            alternative = find_return((start["lat"], start["lon"]), (home["lat"], home["lon"]), elapsed)
+            if alternative:
+                other = assess(alternative)
+                if not other[0]:
+                    return other
         return problems, margins, limiting, consumed
 
-    step = max(1, (len(points) - 1) // 100)
-    indexes = sorted({*range(0, len(points), step), len(points) - 1,
-                      *([original_split, min(len(points) - 1, original_split + 1)] if original_split is not None else [])})
-    good = None
-    failure = None
-    result = None
-    for index in indexes:
-        result = check(points[:index + 1])
-        if result[0]:
-            failure = index
-            break
-        good = index
-    if failure is None:
-        _, margins, limiting, consumed = result
-        pnr.update(status="round_trip_safe", show_pnr=False, pnr_index=None, pnr_point=None,
-                   round_trip_margin=margins[limiting], limiting_resource=limiting,
-                   return_total=consumed.get(pnr["resource"], 0.0))
-        for key, detail in pnr["resource_margins"].items():
-            detail["return"] = consumed.get(key, 0)
-            detail["round_trip_margin"] = margins[key]
-        pnr["asymmetry"] = pnr["return_total"] - pnr["outbound_total"]
-        for segment in pnr["segments"]:
-            segment["state"] = "safe"
-        return points, pnr
+    from bisect import bisect_right
+    from .pnr import search_pnr
+    import time
 
-    if good is None:
-        index = 0
-    else:
-        while failure - good > 1:
-            middle = (good + failure) // 2
-            result = check(points[:middle + 1])
-            if result[0]:
-                failure = middle
-            else:
-                good = middle
-        a, b = points[good], points[failure]
-        low, high = 0.0, 1.0
-        for _ in range(7):
-            if (high - low) * (b["distance_m"] - a["distance_m"]) < 0.5:
-                break
-            fraction = (low + high) / 2
-            probe = {**a, **{k: a[k] + (b[k] - a[k]) * fraction
-                             for k in ("lat", "lon", "elevation_m", "distance_m")}}
-            if check([*points[:good + 1], probe])[0]:
-                high = fraction
-            else:
-                low = fraction
-        index = good
-        if low > 0:
-            marker = {**a, **{k: a[k] + (b[k] - a[k]) * low for k in ("lat", "lon", "elevation_m", "distance_m")}}
-            index = good + 1
+    distances = [point["distance_m"] for point in points]
+    def at(distance):
+        i = max(0, min(len(points) - 2, bisect_right(distances, distance) - 1))
+        a, b = points[i:i + 2]
+        f = (distance - distances[i]) / max(1e-12, distances[i + 1] - distances[i])
+        probe = {**a, **{key: a[key] + (b[key] - a[key]) * f
+                         for key in ("lat", "lon", "elevation_m", "distance_m")}}
+        return i, probe
+
+    def evaluate(distance):
+        i, probe = at(distance)
+        problems, margins, limiting, consumed = check([*points[:i + 1], probe])
+        spent = route_metrics([*points[:i + 1], probe], profile, speed)
+        return {"viable": not problems, "reasons": problems, "margins": margins,
+                "limiting": limiting, "consumed": consumed, "arrival_time_s": spent["duration_s"],
+                "remaining": {key: available - spent["resources"].get(key, 0) for key, (available, _) in inventory.items()}}
+
+    analysis = search_pnr(distances[-1], evaluate,
+                          tolerance=forecast.params.get("pnr_tolerance_m", 100),
+                          max_queries=forecast.params.get("pnr_max_evaluations", 128),
+                          deadline=time.monotonic() + 8.0, critical_points=distances)
+    status = analysis["analysis_status"]
+    pnr.update({key: value for key, value in analysis.items() if key not in ("sample", "distance_m")})
+    pnr.update(show_pnr=False, pnr_index=None, pnr_point=None, return_reasons=[],
+               status="indeterminate" if status == "INDETERMINATE" else "round_trip_safe")
+    if status == "PNR_FOUND":
+        distance = analysis["distance_m"]
+        i, marker = at(distance)
+        index = i + 1 if distance > distances[i] + 1e-8 else i
+        if index == i + 1 and abs(distance - distances[i + 1]) > 1e-8:
             points = [*points[:index], marker, *points[index:]]
-
-    reasons, _, limiting, _ = check(points[:min(index + 2, len(points))])
-    pnr.update(status="pnr_exceeded", show_pnr=True, pnr_index=index, limiting_resource=limiting,
-               round_trip_margin=pnr["resource_margins"][limiting]["round_trip_margin"],
-               one_way_margin=pnr["resource_margins"][limiting]["one_way_margin"],
-               pnr_point={key: points[index][key] for key in ("lat", "lon", "elevation_m", "distance_m")},
-               return_reasons=reasons,
-               segments=[{"from": i, "to": i + 1, "state": "safe" if i < index else "no_return"}
-                         for i in range(len(points) - 1)])
+        sample = analysis["sample"]
+        pnr.update(status="pnr_exceeded", show_pnr=True, pnr_index=index,
+                   pnr_point={key: points[index][key] for key in ("lat", "lon", "elevation_m", "distance_m")},
+                   return_reasons=sample["reasons"], limiting_resource=sample["limiting"],
+                   return_state={key: sample[key] for key in ("margins", "remaining", "arrival_time_s", "consumed")},
+                   boundary_interval_m=[max(0, distance - analysis["tolerance_m"]), distance])
+    elif status == "NO_PNR_VERIFIED":
+        sample = evaluate(distances[-1])
+        pnr.update(round_trip_margin=sample["margins"][sample["limiting"]],
+                   limiting_resource=sample["limiting"], return_total=sample["consumed"].get(pnr["resource"], 0))
+        for key, detail in pnr["resource_margins"].items():
+            detail.update({"return": sample["consumed"].get(key, 0), "round_trip_margin": sample["margins"][key]})
+        pnr["asymmetry"] = pnr["return_total"] - pnr["outbound_total"]
+    pnr["segments"] = [{"from": i, "to": i + 1,
+                         "state": "no_return" if pnr["show_pnr"] and i >= pnr["pnr_index"]
+                         else "unverified" if status == "INDETERMINATE" else "safe"}
+                        for i in range(len(points) - 1)]
     return points, pnr

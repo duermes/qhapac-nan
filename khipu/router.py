@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import heapq
 import math
+import time
 from typing import Callable
 from dataclasses import dataclass, field
 
@@ -40,11 +41,14 @@ class RouteInfeasible(Exception):
         self.extra = extra
 
     def to_dict(self) -> dict:
-        return {"feasible": False, "reason": self.reason, "detail": self.detail, **self.extra}
+        return {"feasible": False, "classification": "INVALID_ROUTE", "pnr": None,
+                "reason": self.reason, "detail": self.detail, **self.extra}
 
 
 @dataclass
 class RouterConfig:
+    max_search_seconds: float = 4.0
+    max_expansions: int = 150000
     max_step_slope_deg: float = 20.0
     risk_weight: float = 1.0
     uphill_penalty: float = 2.5
@@ -113,6 +117,7 @@ def astar(terrain: TerrainContext, costmap: CostmapResult, start: tuple[int, int
 
     heap = [(h(s), 0.0, s)]
     expanded = 0
+    deadline = time.monotonic() + cfg.max_search_seconds
     rw = cfg.risk_weight
     up, down = cfg.uphill_penalty, cfg.downhill_penalty
     while heap:
@@ -121,6 +126,8 @@ def astar(terrain: TerrainContext, costmap: CostmapResult, start: tuple[int, int
             continue
         closed[cur] = 1
         expanded += 1
+        if expanded % 256 == 0 and (expanded > cfg.max_expansions or time.monotonic() > deadline):
+            raise RouteInfeasible("search_budget", "La búsqueda alcanzó su límite de trabajo. Reduce el tramo o ajusta las restricciones; no se ha demostrado que no exista ruta.", classification="INDETERMINATE")
         if cur == t:
             break
         r, c = divmod(cur, W)

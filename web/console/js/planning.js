@@ -1,4 +1,5 @@
 // Planning panel: origin/destination, waypoints, multicriteria variants, PNR, save/lock, export.
+import { translate } from "/static/shared/js/language.js";
 import { api, download } from "/static/shared/js/api.js";
 import { fmt } from "/static/shared/js/geo.js";
 import { ASSET_REGISTRY, icon } from "/static/shared/js/icons.js";
@@ -39,6 +40,7 @@ export function initPlanning(c) {
     t.waypoints.splice(+b.dataset.rmWp, 1);
     invalidate(t, "Waypoint retirado: recalcula la ruta");
   });
+  document.addEventListener("qn:language", fillSelects);
   ctx.on("entities", fillSelects);
   ctx.on("session", () => { fillSelects(); syncForm(); syncToggles(); collapse(!!ctx.cur.planningCollapsed, true); });
   ctx.on("active-traverse", () => { syncForm(); refreshScene(); });
@@ -75,11 +77,39 @@ function fillSelects() {
   const group = (list) => {
     const by = {};
     list.forEach((e) => { (by[e.kind] ||= []).push(e); });
-    return Object.entries(by).map(([k, l]) => `<optgroup label="${esc(ASSET_REGISTRY[k]?.label || k)}">${l.map((e) => `<option data-no-localize value="${esc(e.id)}">${esc(optionLabel(e))}</option>`).join("")}</optgroup>`).join("");
+    return Object.entries(by).map(([k, l]) => `<optgroup label="${esc(ASSET_REGISTRY[k]?.label || k)}">${l.map((e) => `<option value="${esc(e.id)}">${esc(optionLabel(e))}</option>`).join("")}</optgroup>`).join("");
   };
   $("#origin").innerHTML = `<option value="">Selecciona el origen</option>${group(ents)}<option value="__custom">Coordenadas personalizadas…</option>`;
   $("#destination").innerHTML = `<option value="">Selecciona el destino</option>${group(ents)}<option value="__custom">Coordenadas personalizadas…</option>`;
+  for (const role of ["origin", "destination"]) installPointPicker(role, ents);
   syncForm();
+}
+
+function installPointPicker(role, entities) {
+  const select = document.getElementById(role);
+  select.hidden = true;
+  let picker = document.getElementById(`${role}-picker`);
+  if (!picker) {
+    picker = document.createElement("details");
+    picker.className = "point-picker"; picker.id = `${role}-picker`;
+    picker.innerHTML = `<summary class="select"></summary><div class="point-picker-body"><input class="input" type="search" placeholder="Buscar punto…" aria-label="Buscar punto"><div class="point-picker-groups"></div></div>`;
+    select.after(picker);
+  }
+  const input = picker.querySelector("input");
+  const normalize = text => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const render = () => {
+    const term = normalize(input.value);
+    const groups = Object.groupBy(entities.filter(e => normalize(`${translate(e.name)} ${translate(ASSET_REGISTRY[e.kind]?.label || e.kind)}`).includes(term)), e => e.kind);
+    picker.querySelector(".point-picker-groups").innerHTML = Object.entries(groups).map(([kind,list]) =>
+      `<details ${term ? "open" : ""}><summary>${esc(translate(ASSET_REGISTRY[kind]?.label || kind))} (${list.length})</summary>${list.map(e=>`<button type="button" class="btn" data-point="${esc(e.id)}">${esc(translate(optionLabel(e)))}</button>`).join("")}</details>`).join("")
+      + `<button type="button" class="btn" data-point="__custom">${translate("Coordenadas personalizadas…")}</button>`;
+    picker.querySelectorAll("[data-point]").forEach(button => button.onclick = () => {
+      select.value = button.dataset.point; select.dispatchEvent(new Event("change")); picker.open = false;
+    });
+  };
+  input.oninput = render;
+  picker.ontoggle = () => { if (picker.open) render(); };
+  render();
 }
 
 function syncForm() {
@@ -90,6 +120,8 @@ function syncForm() {
     const p = t?.[role];
     const sel = $(`#${role}`);
     sel.value = p?.id && ctx.entities.some((e) => e.id === p.id) ? p.id : p ? "__custom" : "";
+    const summary = document.querySelector(`#${role}-picker > summary`);
+    if (summary) summary.textContent = translate(p?.name || (role === "origin" ? "Selecciona el origen" : "Selecciona el destino"));
     $(`#${role}-lat`).value = p ? p.lat.toFixed(5) : "";
     $(`#${role}-lon`).value = p ? p.lon.toFixed(5) : "";
   }
@@ -236,9 +268,10 @@ function renderVariants() {
   const route = currentVariant();
   if (!route) return;
   const pnr = route.pnr?.pnr_point;
+  const uncertain = route.pnr?.classification === "INDETERMINATE";
   el.innerHTML = `<div class="variant"><b>Ruta de travesía</b>
     <small>${fmt.m(route.metrics.distance_m)} · ${fmt.dur(route.metrics.duration_s)}</small>
-    <small class="return-safe"><i></i> Retorno con reserva${pnr ? " hasta el PNR" : " en todo el recorrido"}</small>
+    <small class="${uncertain ? "state-caution" : "return-safe"}"><i></i> ${uncertain ? "Retorno no concluyente" : `Retorno con reserva${pnr ? " hasta el PNR" : " en todo el recorrido"}`}</small>
     ${pnr ? `<small class="return-limited"><i></i> Retorno no garantizado desde el PNR</small>
     <small class="mono">PNR · ${fmt.lat(pnr.lat)}, ${fmt.lon(pnr.lon)} · ${fmt.m(pnr.distance_m)} desde el origen</small>` : ""}</div>`;
 }
@@ -361,6 +394,8 @@ async function importRoute(e) {
 
 // ------------------------------------------------------------------ mission parameters
 const PARAMS = [
+  ["pnr_tolerance_m", "Precisión espacial PNR (m)", 1, 2000, 1, 100],
+  ["pnr_max_evaluations", "Presupuesto de evaluación PNR", 8, 512, 1, 128],
   ["max_slope_deg", "Pendiente máxima (°)", 1, 30, 0.1, null],
   ["walkback_limit_m", "Walkback EVA (m)", 1000, 4000, 1, 4000],
   ["reserve_fraction", "Reserva general (fracción)", 0, 0.8, 0.01, 0.25],

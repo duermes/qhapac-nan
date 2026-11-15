@@ -90,6 +90,47 @@ export const ASSET_REGISTRY = {
 
 export const markerKind = (e) => e.source === "official_science" ? e.category : e.kind;
 
+// Optional local SVG replacements. The same image supplies canvas, 3D and legend.
+const markerCache = new Map();
+const fallbackCache = new Map();
+let customKinds = new Set();
+fetch("/api/map-icons").then(response => response.ok ? response.json() : {kinds:[]})
+  .then(({kinds}) => { customKinds = new Set(kinds); document.dispatchEvent(new Event("qn:icons")); })
+  .catch(() => {});
+export function markerImage(kind, color = ASSET_REGISTRY[kind]?.color || "#f3ebdc") {
+  const reg = ASSET_REGISTRY[kind] || ASSET_REGISTRY.waypoint;
+  if (customKinds.has(kind) && !markerCache.has(kind)) {
+    const custom = new Image();
+    markerCache.set(kind, custom);
+    custom.onload = () => document.dispatchEvent(new Event("qn:icons"));
+    custom.onerror = () => { markerCache.set(kind, null); };
+    custom.src = `/static/shared/assets/markers/${encodeURIComponent(kind)}.svg`;
+  }
+  const custom = markerCache.get(kind);
+  if (custom?.complete && custom.naturalWidth) return custom;
+  const key = `${kind}:${color}`;
+  if (!fallbackCache.has(key)) {
+    const img = new Image();
+    const svg = icon(reg.icon).replace('stroke="currentColor"', `stroke="${color}"`)
+      .replace('class="icon"', 'xmlns="http://www.w3.org/2000/svg" width="24" height="24"');
+    img.onload = () => document.dispatchEvent(new Event("qn:icons"));
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    fallbackCache.set(key, img);
+  }
+  return fallbackCache.get(key);
+}
+
+export function markerSymbol(kind) {
+  const img = markerImage(kind);
+  const custom = markerCache.get(kind);
+  return custom?.complete && custom.naturalWidth
+    ? `<img src="${img.src}" class="icon" alt="" aria-hidden="true">`
+    : icon((ASSET_REGISTRY[kind] || ASSET_REGISTRY.waypoint).icon);
+}
+
+export const isVirtual = (entity) => ["astronaut", "rover"].includes(entity.kind)
+  && (entity.virtual === true || entity.source === "user");
+
 export function brandBlock(sub) {
   return `<div class="brand panel cut" role="banner">
     <span class="brand-mark">${icon("brand", "brand-mark")}</span>

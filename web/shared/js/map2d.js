@@ -1,19 +1,9 @@
 // 2D cartographic renderer (Canvas). Shared by Hatun Wasi and Chaski.
 // Camera in full-resolution grid cells: (cx, cy) centre, scale = screen px per cell, rot = radians.
+import { translate } from "./language.js";
 import { haversine } from "./geo.js";
 import { contourPath, drawLayer, hillshade } from "./raster.js";
-import { ASSET_REGISTRY, markerKind, icon } from "./icons.js";
-
-const iconCache = new Map();
-function iconImage(name, color) {
-  const k = `${name}|${color}`;
-  if (iconCache.has(k)) return iconCache.get(k);
-  const svg = icon(name).replace('stroke="currentColor"', `stroke="${color}"`).replace('class="icon"', 'xmlns="http://www.w3.org/2000/svg" width="24" height="24"');
-  const img = new Image();
-  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  iconCache.set(k, img);
-  return img;
-}
+import { ASSET_REGISTRY, markerKind, markerImage, isVirtual } from "./icons.js";
 
 export class Map2D {
   constructor(canvas, region, opts = {}) {
@@ -34,6 +24,8 @@ export class Map2D {
     this.cam = { cx: this.g.cols / 2, cy: this.g.rows / 2, scale: 1, rot: 0 };
     this.listeners = {};
     this.sun = { az: 315, el: 35 };
+    document.addEventListener("qn:icons", () => this.draw());
+    document.addEventListener("qn:language", () => this.draw());
     this.buildBase();
     this.resize();
     this.fit();
@@ -210,8 +202,8 @@ export class Map2D {
 
   hitEntity(x, y) {
     let best = null, bd = 14;
-    for (const e of this.entities) {
-      if (this.hidden.has(markerKind(e))) continue;
+    for (const e of [...this.entities].sort((a, b) => Number(!!a.primary) - Number(!!b.primary))) {
+      if (this.hidden.has(markerKind(e)) && !e.primary) continue;
       const p = this.llToScreen(e.lat, e.lon);
       const d = Math.hypot(p.x - x, p.y - y);
       if (d < bd) { bd = d; best = e; }
@@ -356,7 +348,7 @@ export class Map2D {
       ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
       if (rt.segments?.length) {
         // solid colour segmentation by PNR state
-        const col = { safe: "#65d8ff", caution: "#65d8ff", no_return: "#ff8c36" };
+        const col = { safe: "#65d8ff", caution: "#65d8ff", no_return: "#ff8c36", unverified: "#b9a6d9" };
         rt.segments.forEach((s) => {
           const a = pts[s.from], b = pts[s.to];
           if (!a || !b) return;
@@ -386,7 +378,17 @@ export class Map2D {
       if (p.x < -20 || p.y < -20 || p.x > this.w + 20 || p.y > this.h + 20) continue;
       const reg = ASSET_REGISTRY[markerKind(e)] || ASSET_REGISTRY.waypoint;
       const sel = this.selection && this.selection.id === e.id;
-      const rad = e.kind === "waypoint" ? 7 : 11;
+      const rad = e.primary ? 17 : e.kind === "waypoint" ? 7 : 11;
+      if (e.primary) {
+        const halo = ctx.createRadialGradient(p.x,p.y,5,p.x,p.y,38);
+        halo.addColorStop(0,"#fff1b6aa"); halo.addColorStop(1,"#ffe59d00");
+        ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(p.x,p.y,38,0,Math.PI*2); ctx.fill();
+      }
+      if (isVirtual(e)) {
+        ctx.strokeStyle = "#c49aff"; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.arc(p.x,p.y,rad+5,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+        ctx.font = "bold 10px sans-serif"; ctx.fillStyle = "#e1cdff"; ctx.fillText("V",p.x+rad,p.y-rad);
+      }
       ctx.fillStyle = "rgba(11,16,13,0.88)";
       ctx.strokeStyle = sel ? "#dfbd80" : reg.color;
       ctx.lineWidth = sel ? 2.5 : 1.6;
@@ -397,10 +399,10 @@ export class Map2D {
         ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);   // circles encode science/vehicles
       }
       ctx.fill(); ctx.stroke();
-      if (e.kind !== "waypoint") {
-        const img = iconImage(reg.icon, reg.color);
-        if (img.complete) ctx.drawImage(img, p.x - 7, p.y - 7, 14, 14);
-        else img.onload = () => this.draw();
+      {
+        const img = markerImage(markerKind(e), reg.color);
+        if (img.complete && img.naturalWidth) ctx.drawImage(img, p.x - 7, p.y - 7, 14, 14);
+        else img.addEventListener("load", () => this.draw(), {once:true});
       }
       if (e.locked) { ctx.fillStyle = "#dfbd80"; ctx.fillRect(p.x + 6, p.y - 10, 4, 4); }
       if (e.heading != null && (e.kind === "rover" || e.kind === "astronaut")) {
@@ -422,8 +424,8 @@ export class Map2D {
     }
     for (const e of this.entities) {
       if (this.hidden.has(markerKind(e)) || e.kind === "waypoint" && !e.name) continue;
-      if (sc < (e.kind === "sample" ? 6 : 2.2) && !(this.selection && this.selection.id === e.id)) continue;
-      items.push({ text: e.name, lat: e.lat, lon: e.lon, prio: (this.selection && this.selection.id === e.id) ? 20 : 5, kind: "entity", size: 11, dy: 22 });
+      if (sc < (e.kind === "sample" ? 6 : 2.2) && !e.primary && !(this.selection && this.selection.id === e.id)) continue;
+      items.push({ text: translate(e.name), lat: e.lat, lon: e.lon, prio: e.primary ? 100 : (this.selection && this.selection.id === e.id) ? 20 : 5, kind: "entity", size: 11, dy: 22 });
     }
     items.sort((a, b) => b.prio - a.prio);
     const placed = [];

@@ -1,3 +1,4 @@
+import { translate } from "/static/shared/js/language.js";
 import * as THREE from "three";
 import { ASSET_REGISTRY, markerKind } from "/static/shared/js/icons.js";
 import { Terrain3D } from "./world.js";
@@ -179,7 +180,7 @@ export class EvaScene {
     ctx.fillStyle = "#f3ebdc";
     ctx.font = "14px monospace";
     const lines = ["SIMULACIÓN DE ENTRENAMIENTO EVA", "Hábitat presurizado · traje conectado", `Oxígeno ${(vitals.o2_kg / 1.2 * 100).toFixed(1)}% · batería ${(vitals.battery_wh / 1100 * 100).toFixed(1)}%`, `Estamina ${vitals.effort.staminaPct.toFixed(0)}% · muestras ${samples}/16`, "[E] Consultar misión · [F] Salir por esclusa"];
-    lines.forEach((line, i) => ctx.fillText(line, 24, 82 + i * 32));
+    lines.forEach((line, i) => ctx.fillText(translate(line), 24, 82 + i * 32));
     this.world.monitorTexture.needsUpdate = true;
   }
 

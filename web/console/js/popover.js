@@ -34,6 +34,7 @@ export function setAddMode(on) {
   ctx.cur.addMode = on;
   $("#new-point").setAttribute("aria-pressed", String(on));
   $("#map2d").classList.toggle("adding", on);
+  if (on) ctx.decks?.risk.close();
   if (on) toast("Haz clic en el mapa para crear un punto (Esc cancela)", "", 2500);
 }
 
@@ -56,7 +57,7 @@ function place(screen) {
 function onMapClick({ ll, hit, screen }) {
   if (ctx.cur.addMode) { addPointDialog(ll); return; }
   if (hit) { openEntity(hit, screen); return; }
-  openPoint(ll, screen);
+  close(); // Empty terrain is inspected by the shared risk deck only.
 }
 
 function metaBlock(lat, lon) {
@@ -65,25 +66,6 @@ function metaBlock(lat, lon) {
     <dt>Elevación MOLA</dt><dd>${e == null ? "sin dato" : e.toFixed(0) + " m"}</dd><dt>Pendiente</dt><dd>${s == null ? "—" : s.toFixed(1) + "°"}</dd></dl>`;
 }
 
-function openPoint(ll, screen) {
-  ctx.selection = null;
-  const selecting = ctx.cur.mode === "plan" && activeTraverse();
-  pop.innerHTML = `<div class="pop-head"><div><div class="pop-title">Punto del terreno</div><div class="pop-kind">inspección</div></div>
-      <button class="btn btn-icon" data-x aria-label="Cerrar">${icon("x")}</button></div>
-    <div class="pop-body">${metaBlock(ll.lat, ll.lon)}<div class="dim" style="font-size:10px;margin-top:6px">${provBadge("derived_from_nasa")} interpolación bilineal de MOLA 463 m/px</div></div>
-    <div class="pop-actions"><button class="btn" data-a="wp">${icon("pin")} Crear waypoint</button><button class="btn" data-a="dest" ${selecting ? "" : "hidden"}>${icon("target")} Usar como destino</button>
-      <button class="btn" data-a="orig" ${selecting ? "" : "hidden"}>${icon("nav")} Usar como origen</button><button class="btn" data-a="focus">${icon("focus")} Enfocar</button></div>`;
-  place(screen);
-  pop.querySelector("[data-x]").onclick = close;
-  pop.querySelectorAll("[data-a]").forEach((b) => b.addEventListener("click", () => {
-    const a = b.dataset.a;
-    if (a === "wp") addPointDialog(ll);
-    if (a === "dest") setEndpoint("destination", { lat: ll.lat, lon: ll.lon, name: `${ll.lat.toFixed(4)}, ${ll.lon.toFixed(4)}` });
-    if (a === "orig") setEndpoint("origin", { lat: ll.lat, lon: ll.lon, name: `${ll.lat.toFixed(4)}, ${ll.lon.toFixed(4)}` });
-    if (a === "focus") ctx.map2d.focusOn(ll.lat, ll.lon, ctx.map2d.cam.scale * 2);
-    close();
-  }));
-}
 
 function openEntity(e, screen, editing = false) {
   ctx.selection = e;
@@ -221,7 +203,7 @@ function addPointDialog(ll) {
     <label class="label" for="ap-name">Nombre</label><input class="input" id="ap-name" name="name" value="Waypoint ${n}" required maxlength="120">
     <label class="label" for="ap-kind">Tipo</label><select class="select" id="ap-kind" name="kind">
       <option value="waypoint">Waypoint</option><option value="poi">POI científico</option><option value="sample">Muestra</option><option value="hazard">Peligro observado</option>
-      <option value="lava_pit">Fosa de lava</option><option value="laboratory">Laboratorio</option>
+      <option value="laboratory">Laboratorio</option>
       <option value="astronaut">Astronauta virtual</option><option value="rover">Rover virtual</option></select>
     <div data-mobile-fields></div>
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="general"> Guardar en activos generales (persistente)</label></form>`;

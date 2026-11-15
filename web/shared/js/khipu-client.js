@@ -69,7 +69,18 @@ export function nearest(entities, lat, lon, maxM = Infinity, filter = () => true
   return best ? { entity: best, distance: bd } : null;
 }
 
-export async function layerGrid(regionKey, id, params = {}) {
+const layerRequests = new Map();
+export function layerGrid(regionKey, id, params = {}) {
+  const key = JSON.stringify([regionKey, id, params]);
+  const previous = layerRequests.get(key);
+  if (previous && Date.now() - previous.at < 15000) return previous.result;
+  const result = fetchLayerGrid(regionKey, id, params);
+  layerRequests.set(key, {at:Date.now(),result});
+  if (layerRequests.size > 64) layerRequests.delete(layerRequests.keys().next().value);
+  result.catch(() => layerRequests.delete(key));
+  return result;
+}
+async function fetchLayerGrid(regionKey, id, params = {}) {
   const res = await api.layer(id, { region_key: regionKey, stride: 2, ...params });
   if (!res.available) return { ...res, grid: null };
   return { ...res, decoded: decodeGrid(res.grid) };
