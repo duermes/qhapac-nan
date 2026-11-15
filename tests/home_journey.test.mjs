@@ -74,3 +74,16 @@ test("the Chaski frame keeps the messenger and the onward trail in view", () => 
   assert.ok(messengerX > 1440 * 0.4 && messengerX < 1440 * 0.6);
   assert.ok(trailX > 1440 * 0.8 && trailX < 1440);
 });
+
+test("both classic and wide panorama profiles fit camera and eye targets", () => {
+  for (const profileKey of ["classic", "wide"]) {
+    const s0 = journeyState(STOPS[0], 1440, 900, false, profileKey);
+    const s1 = journeyState(STOPS[1], 1440, 900, false, profileKey);
+    const s2 = journeyState(STOPS[2], 1440, 900, false, profileKey);
+    assert.ok(s0.cameraX < s1.cameraX && s1.cameraX < s2.cameraX);
+    const final = journeyState(1, 1440, 900, false, profileKey);
+    const eye = eyeGeometry(final, 1440, 900, profileKey);
+    assert.ok(eye.left >= 0 && eye.left + eye.width <= 1440);
+    assert.ok(eye.top >= 120 && eye.top + eye.height < 900 * 0.7);
+  }
+});

@@ -1,6 +1,7 @@
 import { api } from "/static/shared/js/api.js";
-import { STOPS, clamp, journeyState, eyeGeometry, closeupGeometry } from "./journey-math.js";
+import { STOPS, clamp, journeyState, eyeGeometry, closeupGeometry, PANORAMA_PROFILES, getPanoramaProfile } from "./journey-math.js";
 import { playStoneClick } from "./stone-audio.js";
+import { translate } from "/static/shared/js/language.js?v=stone-v3";
 
 const $ = selector => document.querySelector(selector);
 const viewport = $("#journey-viewport");
@@ -17,11 +18,31 @@ const soundToggle = $("#sound-toggle");
 let soundEnabled = true;
 try { soundEnabled = localStorage.getItem("qn-ui-sound") !== "off"; } catch {}
 
+function activeProfile() {
+  const explicit = viewport.dataset.panorama || art.dataset.panorama;
+  if (explicit && PANORAMA_PROFILES[explicit]) {
+    return PANORAMA_PROFILES[explicit];
+  }
+  const w = art.naturalWidth || parseInt(art.getAttribute("width") || "2172", 10);
+  const h = art.naturalHeight || parseInt(art.getAttribute("height") || "724", 10);
+  return getPanoramaProfile(w / h);
+}
+
+function syncProfileStyles(profile) {
+  viewport.dataset.panorama = profile.id;
+  viewport.style.setProperty("--target-intiwatana-left", profile.targets.intiwatana.left);
+  viewport.style.setProperty("--target-intiwatana-top", profile.targets.intiwatana.top);
+  viewport.style.setProperty("--target-chaski-left", profile.targets.chaski.left);
+  viewport.style.setProperty("--target-chaski-top", profile.targets.chaski.top);
+  viewport.style.setProperty("--target-warrior-left", profile.targets.warrior.left);
+  viewport.style.setProperty("--target-warrior-top", profile.targets.warrior.top);
+}
+
 function updateSoundControl() {
   soundToggle.setAttribute("aria-pressed", String(soundEnabled));
-  soundToggle.setAttribute("aria-label", soundEnabled ? "Desactivar efectos de sonido" : "Activar efectos de sonido");
-  soundToggle.title = soundEnabled ? "Desactivar efectos de sonido" : "Activar efectos de sonido";
-  soundToggle.textContent = soundEnabled ? "Sonido: sí" : "Sonido: no";
+  soundToggle.setAttribute("aria-label", translate(soundEnabled ? "Desactivar efectos de sonido" : "Activar efectos de sonido"));
+  soundToggle.title = translate(soundEnabled ? "Desactivar efectos de sonido" : "Activar efectos de sonido");
+  soundToggle.textContent = translate(soundEnabled ? "Sonido: sí" : "Sonido: no");
 }
 
 document.addEventListener("click", event => {
@@ -46,6 +67,7 @@ function measure(preserve = false) {
   range = Math.max(1, scroller.scrollHeight - scroller.clientHeight);
   if (preserve) scroller.scrollTo({ top: progress * range, behavior: "instant" });
   targetProgress = clamp(scroller.scrollTop / range);
+  syncProfileStyles(activeProfile());
   const eye = closeupGeometry(width, height, eyeArt.naturalWidth || 1672, eyeArt.naturalHeight || 941);
   eyeArt.style.objectPosition = `${eye.positionX * 100}% 48%`;
   Object.assign(eyeLink.style, { left: `${eye.left}px`, top: `${eye.top}px`, width: `${eye.width}px`, height: `${eye.height}px` });
@@ -68,8 +90,12 @@ function render(time) {
   lastTime = time;
   progress = motionPreference.matches ? targetProgress : progress + (targetProgress - progress) * (1 - Math.exp(-12 * dt));
   if (Math.abs(progress - targetProgress) < 0.00008) progress = targetProgress;
-  const state = journeyState(progress, width, height, motionPreference.matches);
-  const eye = eyeGeometry(state, width, height, (art.naturalWidth || 4416) / (art.naturalHeight || 960));
+  const profile = activeProfile();
+  const state = journeyState(progress, width, height, motionPreference.matches, profile);
+  const ratio = (art.naturalWidth && art.naturalHeight)
+    ? (art.naturalWidth / art.naturalHeight)
+    : profile.ratio;
+  const eye = eyeGeometry(state, width, height, ratio);
   viewport.style.setProperty("--world-width", `${state.worldWidth}px`);
   viewport.style.setProperty("--world-x", `${-state.cameraX}px`);
   viewport.style.setProperty("--focus-x", `${eye.focusX}px`);
@@ -111,7 +137,7 @@ function render(time) {
   });
   if (activeStage !== state.stage) {
     activeStage = state.stage;
-    $("#journey-announcement").textContent = announcements[state.stage];
+    $("#journey-announcement").textContent = translate(announcements[state.stage]);
   }
   if (Math.abs(progress - targetProgress) > 0.00008 && !leaving) frame = requestAnimationFrame(render);
 }
@@ -143,10 +169,16 @@ async function enter(event) {
 function openMission() {
   dialog.showModal();
   api.health().then(health => {
-    $("#st-health").textContent = health.status === "ok" ? "Khipu · operativo" : "Khipu · sin conexión";
-    $("#st-data").textContent = health.data.macro_available ? "MOLA disponible" : "Sin topografía";
-  }).catch(() => { $("#st-health").textContent = "Sin conexión con Khipu"; });
+    $("#st-health").textContent = translate(health.status === "ok" ? "Khipu · operativo" : "Khipu · sin conexión");
+    $("#st-data").textContent = translate(health.data.macro_available ? "MOLA y datos científicos de misión" : "Datos científicos no disponibles");
+  }).catch(() => { $("#st-health").textContent = translate("Sin conexión con Khipu"); });
 }
+
+document.addEventListener("qn:language", () => {
+  updateSoundControl();
+  if (activeStage >= 0) $("#journey-announcement").textContent = translate(announcements[activeStage]);
+  if (dialog.open) openMission();
+});
 
 scroller.addEventListener("scroll", () => { targetProgress = clamp(scroller.scrollTop / range); requestRender(); }, { passive: true });
 window.addEventListener("resize", () => measure(true));

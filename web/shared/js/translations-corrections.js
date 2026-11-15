@@ -117,7 +117,13 @@ export const correctionEnglish = {
 
   "Comandos de voz": "Voice commands",
   "Pulsa K o el botón de voz para dar una orden.": "Press K or the voice button to give a command.",
+  "El recorrido es una interpretación visual de inspiración andina. La aplicación integra topografía MOLA, cartografía geológica y modelos analíticos de misión. Sus resultados son apoyo de decisión dentro de los datos y supuestos declarados.": "The journey is an Andean-inspired visual interpretation. The application integrates MOLA topography, geological cartography, and analytical mission models. Its results support decisions within the stated data and assumptions.",
+  "MOLA y datos científicos de misión": "MOLA & mission science data",
+  "Datos científicos no disponibles": "Science data unavailable",
   "Captura de Hatun Wasi": "Hatun Wasi screenshot", "Captura de Chaski": "Chaski screenshot",
+  "Captura de Ñawi": "Ñawi screenshot", "Captura del visor Ñawi": "Ñawi visor screenshot",
+  "Vista de la consola Hatun Wasi": "Hatun Wasi console view", "Vista del monitor Chaski": "Chaski monitor view", "Vista del visor Ñawi": "Ñawi visor view",
+  "Ñawi, visor EVA": "Ñawi, EVA visor",
   "Monitor de Chaski": "Chaski monitor",
   "Consumibles restantes al llegar": "Consumables remaining on arrival",
   "Distancia recorrida": "Distance travelled",

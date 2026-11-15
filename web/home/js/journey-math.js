@@ -14,18 +14,83 @@ export function interpolate(progress, frames) {
   return frames.at(-1)[1];
 }
 
-export function journeyState(progress, width, height, reduced = false) {
+export const PANORAMA_PROFILES = {
+  classic: {
+    id: "classic",
+    width: 2172,
+    height: 724,
+    ratio: 2172 / 724,
+    heightMultiplier: 3.2,
+    targets: {
+      intiwatana: { left: "21%", top: "56%" },
+      chaski: { left: "46%", top: "55%" },
+      warrior: { left: "83%", top: "47%" }
+    },
+    camera: {
+      x0: (bw, w) => bw * 0.18 - w * 0.63,
+      x1: (bw, w) => bw * 0.465 - w * 0.55,
+      x2: (ww, w) => ww * 0.783 - w * 0.66
+    },
+    eye: {
+      focusXFactor: 0.784,
+      focusYFactor: 0.344,
+      shiftXRatio: w => (w <= 650 ? 0.5 : 0.68),
+      shiftYRatio: 0.4,
+      eyeWidthFactor: 0.012,
+      eyeHeightFactor: 0.008
+    }
+  },
+  wide: {
+    id: "wide",
+    width: 4416,
+    height: 960,
+    ratio: 4416 / 960,
+    heightMultiplier: 4.6,
+    targets: {
+      intiwatana: { left: "13%", top: "51%" },
+      chaski: { left: "45.3%", top: "56%" },
+      warrior: { left: "86.7%", top: "31%" }
+    },
+    camera: {
+      x0: (bw, w) => bw * 0.14 - w * 0.55,
+      x1: (bw, w) => bw * 0.45 - w * 0.48,
+      x2: (ww, w) => ww * 0.867 - w * 0.72
+    },
+    eye: {
+      focusXFactor: 0.867,
+      focusYFactor: 0.302,
+      shiftXRatio: w => (w <= 650 ? 0.5 : 0.68),
+      shiftYRatio: 0.38,
+      eyeWidthFactor: 0.012,
+      eyeHeightFactor: 0.012
+    }
+  }
+};
+
+export function getPanoramaProfile(identifierOrRatio) {
+  if (typeof identifierOrRatio === "string" && PANORAMA_PROFILES[identifierOrRatio]) {
+    return PANORAMA_PROFILES[identifierOrRatio];
+  }
+  if (typeof identifierOrRatio === "object" && identifierOrRatio !== null && identifierOrRatio.camera) {
+    return identifierOrRatio;
+  }
+  const ratio = typeof identifierOrRatio === "number" && Number.isFinite(identifierOrRatio) ? identifierOrRatio : (2172 / 724);
+  return ratio > 3.8 ? PANORAMA_PROFILES.wide : PANORAMA_PROFILES.classic;
+}
+
+export function journeyState(progress, width, height, reduced = false, profileOrRatio = "classic") {
+  const profile = getPanoramaProfile(profileOrRatio);
   const p = clamp(progress);
-  const baseWidth = Math.max(width * 2.4, height * 4.6);
+  const baseWidth = Math.max(width * 2.4, height * profile.heightMultiplier);
   const worldWidth = baseWidth;
-  const x0 = clamp(baseWidth * 0.14 - width * 0.55, 0, baseWidth - width);
-  const x1 = clamp(baseWidth * 0.45 - width * 0.48, 0, baseWidth - width);
-  const x2 = clamp(worldWidth * 0.867 - width * 0.72, 0, worldWidth - width);
+  const x0 = clamp(profile.camera.x0(baseWidth, width), 0, baseWidth - width);
+  const x1 = clamp(profile.camera.x1(baseWidth, width), 0, baseWidth - width);
+  const x2 = clamp(profile.camera.x2(worldWidth, width), 0, worldWidth - width);
   const stage = p < 0.285 ? 0 : p < 0.645 ? 1 : 2;
   const approach = smooth(0.745, 1, p);
   const maxZoom = width <= 650 ? 1.8 : 2.2;
   return {
-    progress: p, stage, worldWidth,
+    progress: p, stage, worldWidth, profile,
     cameraX: interpolate(p, [[0,x0],[0.12,x0],[0.435,x1],[0.5,x1],[0.735,x2],[1,x2]]),
     zoom: reduced ? 1 : mix(1, maxZoom, approach),
     approach,
@@ -42,14 +107,16 @@ export function journeyState(progress, width, height, reduced = false) {
   };
 }
 
-export function eyeGeometry(state, width, height, ratio = 4416 / 960) {
+export function eyeGeometry(state, width, height, ratioOrProfile = 2172 / 724) {
+  const profile = state?.profile || getPanoramaProfile(ratioOrProfile);
+  const ratio = typeof ratioOrProfile === "number" && Number.isFinite(ratioOrProfile) ? ratioOrProfile : profile.ratio;
   const worldHeight = state.worldWidth / ratio;
-  const focusX = state.worldWidth * 0.867 - state.cameraX;
-  const focusY = (height - worldHeight) / 2 + worldHeight * 0.302;
-  const shiftX = (width * (width <= 650 ? 0.5 : 0.68) - focusX) * state.approach;
-  const shiftY = (height * 0.38 - focusY) * state.approach;
-  const eyeWidth = Math.max(44, state.worldWidth * 0.012 * state.zoom);
-  const eyeHeight = Math.max(44, worldHeight * 0.012 * state.zoom);
+  const focusX = state.worldWidth * profile.eye.focusXFactor - state.cameraX;
+  const focusY = (height - worldHeight) / 2 + worldHeight * profile.eye.focusYFactor;
+  const shiftX = (width * profile.eye.shiftXRatio(width) - focusX) * state.approach;
+  const shiftY = (height * profile.eye.shiftYRatio - focusY) * state.approach;
+  const eyeWidth = Math.max(44, state.worldWidth * profile.eye.eyeWidthFactor * state.zoom);
+  const eyeHeight = Math.max(44, worldHeight * profile.eye.eyeHeightFactor * state.zoom);
   return { focusX, focusY, shiftX, shiftY, left: focusX + shiftX - eyeWidth / 2, top: focusY + shiftY - eyeHeight / 2, width: eyeWidth, height: eyeHeight };
 }
 

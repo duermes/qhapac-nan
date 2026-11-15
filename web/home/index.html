@@ -9,12 +9,12 @@
   <link rel="preload" as="image" href="/static/home/assets/andino-mars-panorama-v2.png" fetchpriority="high" />
   <link rel="preload" as="image" href="/static/home/assets/nawi-eyes.png" />
   <link rel="stylesheet" href="/static/shared/css/qn.css" />
-  <link rel="stylesheet" href="/static/home/css/home.css?v=stone-cards-v2" />
+  <link rel="stylesheet" href="/static/home/css/home.css?v=stone-cards-v3" />
   <link rel="stylesheet" href="/static/shared/css/product-loading.css" />
   <script src="/static/shared/js/entry-transition.js"></script>
-  <script type="module" src="/static/home/js/home.js"></script>
+  <script type="module" src="/static/home/js/home.js?v=stone-v3"></script>
   <link rel="stylesheet" href="/static/shared/css/guide.css" />
-  <script type="module" src="/static/shared/js/guide.js"></script>
+  <script type="module" src="/static/shared/js/guide.js?v=stone-v3"></script>
 </head>
 <body data-guide="home" class="home-journey" data-stage="0">
   <a class="skip-link" href="#journey-navigation">Elegir una interfaz</a>
@@ -39,7 +39,7 @@
     <div class="journey-viewport" id="journey-viewport">
       <div class="world-camera" id="world-camera">
         <div class="world" id="world">
-          <img class="world-art" id="world-art" src="/static/home/assets/andino-mars-panorama-v2.png" width="4416" height="960" alt="Paisaje marciano con la base y estación de hábitat, astronautas junto al rover Chaski y una astronauta en primer plano con traje EVA." fetchpriority="high" decoding="async" />
+          <img class="world-art" id="world-art" src="/static/home/assets/andino-mars-panorama-v2.png" width="2172" height="724" data-panorama="classic" alt="Un sendero de piedra oscura recorre los montes andinos junto al Intiwatana y un chaski; un rastro de luz dorada lo conecta con los cráteres rocosos de Marte y un guerrero de bronce." fetchpriority="high" decoding="async" />
           <a class="world-target target-intiwatana" href="/console" data-enter="console" data-station="0" aria-label="Intiwatana: abrir Hatun Wasi, consola de misión"><span class="target-point"></span></a>
           <a class="world-target target-chaski" href="/rover" data-enter="rover" data-station="1" aria-label="Chaski: abrir el monitor del rover" tabindex="-1"><span class="target-point"></span></a>
           <button class="world-target target-warrior" id="warrior-target" data-station="2" aria-label="Ñawi: acercarse a los ojos del guerrero" tabindex="-1"><span class="target-point"></span></button>
@@ -57,28 +57,28 @@
         <span class="product-label">INTIWATANA</span>
         <h1>HATUN WASI</h1>
         <p>Tu centro de misión. Lee el terreno y prepara una ruta con los recursos necesarios para volver.</p>
-        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video de Hatun Wasi"></div>
+        <div class="video-placeholder" role="img" aria-label="Captura de Hatun Wasi"><img src="/static/home/assets/Home-HatunWasi.png" alt="Vista de la consola Hatun Wasi" loading="lazy" /></div>
         <a class="station-enter stone-button" id="go-console" href="/console" data-enter="console">Entrar a Hatun Wasi</a>
       </section>
       <section class="station-copy" id="copy-chaski" data-copy="1" aria-label="Chaski" aria-hidden="true" inert>
         <span class="product-label">EXPLORACIÓN MÓVIL</span>
         <h2>CHASKI</h2>
         <p>Explora con el rover. Revisa su estado, sigue su recorrido y reconoce el terreno antes de avanzar.</p>
-        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video de Chaski"></div>
+        <div class="video-placeholder" role="img" aria-label="Captura de Chaski"><img src="/static/home/assets/Home-Chaski.png" alt="Vista del monitor Chaski" loading="lazy" /></div>
         <a class="station-enter stone-button" id="go-rover" href="/rover" data-enter="rover" tabindex="-1">Explorar con Chaski</a>
       </section>
       <section class="station-copy nawi-copy" id="copy-warrior" data-copy="2" aria-label="Ñawi, el guerrero" aria-hidden="true" inert>
         <span class="product-label">ASISTENCIA EVA</span>
         <h2>ÑAWI</h2>
         <p>La misión desde tus ojos. Orienta cada paso, vigila tu traje y recoge muestras durante la travesía.</p>
-        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video de Ñawi"></div>
+        <div class="video-placeholder" role="img" aria-label="Captura de Ñawi"><img src="/static/home/assets/Home-%C3%91awi.png" alt="Vista del visor Ñawi" loading="lazy" /></div>
         <button class="station-enter stone-button" id="approach-eyes" tabindex="-1">Acércate a sus ojos</button>
       </section>
       <section class="station-copy nawi-copy eye-copy" id="copy-eyes" data-copy="3" aria-label="Ñawi, visor EVA" aria-hidden="true" inert>
         <span class="product-label">VISOR DE EXPLORACIÓN</span>
         <h2>ÑAWI</h2>
         <p>El camino continúa en primera persona. Selecciona el ojo iluminado para entrar al visor.</p>
-        <div class="video-placeholder" role="img" aria-label="Espacio reservado para el video del visor Ñawi"></div>
+        <div class="video-placeholder" role="img" aria-label="Captura del visor Ñawi"><img src="/static/home/assets/Home-%C3%91awi.png" alt="Vista del visor Ñawi" loading="lazy" /></div>
       </section>
 
       <p class="sr-only" id="journey-announcement" aria-live="polite">Intiwatana. Hatun Wasi, consola de misión.</p>
@@ -90,7 +90,7 @@
     <h2 id="mission-title">Un camino compartido.</h2>
     <p>Hatun Wasi planifica, Chaski explora y Ñawi acompaña la travesía EVA. Las tres interfaces comparten el núcleo Khipu.</p>
     <div class="mission-status"><span id="st-health">Consultando Khipu…</span><span id="st-data"></span></div>
-    <p class="mission-note">El recorrido es una interpretación visual de inspiración andina. La aplicación utiliza topografía MOLA y entidades de misión sintéticas. Sus resultados son apoyo de decisión dentro de los datos y supuestos declarados.</p>
+    <p class="mission-note">El recorrido es una interpretación visual de inspiración andina. La aplicación integra topografía MOLA, cartografía geológica y modelos analíticos de misión. Sus resultados son apoyo de decisión dentro de los datos y supuestos declarados.</p>
     <a href="/static/home/data.html">Procedencia de datos</a>
   </dialog>
 

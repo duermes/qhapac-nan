@@ -28,9 +28,12 @@ button { touch-action: manipulation; }
 .landscape-shade { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(0deg,rgba(8,17,18,.62),rgba(8,17,18,.13) 18%,transparent 40%); }
 .world-target { position: absolute; display: grid; place-items: center; border: 0; padding: 20px; background: none; cursor: pointer; text-decoration: none; z-index: 2; opacity: 0; visibility: hidden; transition: opacity .35s,visibility .35s; }
 .world-target.is-active { opacity: 1; visibility: visible; }
-.target-intiwatana { left: 13%; top: 51%; }
-.target-chaski { left: 45.3%; top: 56%; }
-.target-warrior { left: 86.7%; top: 31%; }
+.target-intiwatana { left: var(--target-intiwatana-left, 21%); top: var(--target-intiwatana-top, 56%); }
+.target-chaski { left: var(--target-chaski-left, 46%); top: var(--target-chaski-top, 55%); }
+.target-warrior { left: var(--target-warrior-left, 83%); top: var(--target-warrior-top, 47%); }
+[data-panorama="wide"] .target-intiwatana { left: var(--target-intiwatana-left, 13%); top: var(--target-intiwatana-top, 51%); }
+[data-panorama="wide"] .target-chaski { left: var(--target-chaski-left, 45.3%); top: var(--target-chaski-top, 56%); }
+[data-panorama="wide"] .target-warrior { left: var(--target-warrior-left, 86.7%); top: var(--target-warrior-top, 31%); }
 .target-point { width: 14px; height: 14px; border: 1px solid #fff9; border-radius: 50%; background: #ffffff35; box-shadow: 0 1px 8px #0003; transition: background .2s,box-shadow .2s; }
 .world-target:hover .target-point, .world-target:focus-visible .target-point { background: #fffb; box-shadow: 0 0 0 8px #ffffff25; }
 .station-copy { position: absolute; z-index: 12; isolation: isolate; right: 4.5vw; bottom: 6vh; width: min(360px,36vw); padding: 25px 26px 22px; border: 1px solid #090b08; border-top-color: #d7c6a44d; border-left-color: #a99b7c40; border-radius: 3px; background-color: #292723; background-image: linear-gradient(160deg,#191a1766,#100f0e80),url('/static/home/assets/stone-button.png'); background-position: center; background-size: cover,115% 115%; box-shadow: inset 0 3px 2px #e9d4ac26,inset 3px 0 3px #cdb48b1f,inset -4px 0 6px #080a07b3,inset 0 -6px 7px #080a07d9,0 12px 25px #0006; opacity: 0; transform: translate3d(0,12px,0); visibility: hidden; pointer-events: none; }
@@ -41,7 +44,8 @@ button { touch-action: manipulation; }
 .product-label { display: block; font-size: 9px; font-weight: 500; letter-spacing: .18em; color: #dfbd80; }
 .station-copy h1, .station-copy h2 { margin: 12px 0 14px; font-size: clamp(30px,3.2vw,36px); font-weight: 500; line-height: 1.1; letter-spacing: .055em; color: #dfd2b6; text-shadow: 0 -1px 2px #000,0 1px 1px #f5dfb04a; }
 .station-copy p { margin: 0; color: #e2dece; font-size: 13px; line-height: 1.7; max-width: 310px; text-wrap: pretty; }
-.video-placeholder { width: 100%; aspect-ratio: 16 / 9; margin: 18px auto 0; background: #000; border: 3px solid #1e201b; border-top-color: #090c08; border-left-color: #10120d; border-bottom-color: #5c54444d; box-shadow: inset 0 4px 12px #000c,0 1px 1px #e8d1a51a; }
+.video-placeholder { width: 100%; aspect-ratio: 16 / 9; margin: 18px auto 0; background: #000; border: 3px solid #1e201b; border-top-color: #090c08; border-left-color: #10120d; border-bottom-color: #5c54444d; box-shadow: inset 0 4px 12px #000c,0 1px 1px #e8d1a51a; overflow: hidden; }
+.video-placeholder img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .station-copy a.stone-button { width: 100%; min-height: 60px; margin-top: 20px; border: 1px solid #080a07b3; border-bottom: 2px solid #b9a78633; border-radius: 3px; background: #10110ea8; box-shadow: inset 0 3px 6px #000a,inset 0 -1px 1px #e8d1a51a,0 1px 1px #ead9b51f; color: #f5d59d; text-shadow: 0 -1px 1px #000,0 1px 1px #f8e7c12b; filter: none; }
 .station-copy a.stone-button:hover { background: #10110ec9; color: #ffe6bd; transform: translateY(-1px); filter: none; }
 .station-copy a.stone-button:active { transform: translateY(1px); box-shadow: inset 0 5px 9px #000e,0 1px 1px #ead9b526; }
