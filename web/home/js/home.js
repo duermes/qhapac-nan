@@ -151,14 +151,14 @@ function openMission() {
 scroller.addEventListener("scroll", () => { targetProgress = clamp(scroller.scrollTop / range); requestRender(); }, { passive: true });
 window.addEventListener("resize", () => measure(true));
 window.addEventListener("wheel", event => {
-  if (dialog.open || event.ctrlKey || leaving) return;
+  if (document.querySelector("dialog[open]") || event.target.closest(".qn-settings") || event.ctrlKey || leaving) return;
   event.preventDefault();
   const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1;
   scroller.scrollBy({ top: delta * unit, behavior: "instant" });
 }, { passive: false });
 window.addEventListener("touchstart", event => {
-  if (event.touches.length !== 1 || dialog.open || event.target.closest("a,button")) return;
+  if (event.touches.length !== 1 || document.querySelector("dialog[open]") || event.target.closest("a,button,.qn-settings")) return;
   touch = { x: event.touches[0].clientX, y: event.touches[0].clientY, scroll: scroller.scrollTop };
 }, { passive: true });
 window.addEventListener("touchmove", event => {
@@ -175,7 +175,7 @@ window.addEventListener("touchmove", event => {
 window.addEventListener("touchend", () => { touch = null; }, { passive: true });
 window.addEventListener("touchcancel", () => { touch = null; }, { passive: true });
 window.addEventListener("keydown", event => {
-  if (dialog.open || event.target.closest("input,textarea,select") || leaving || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (document.querySelector("dialog[open]") || event.target.closest("input,textarea,select,.qn-settings") || leaving || event.altKey || event.ctrlKey || event.metaKey) return;
   if (event.key === "ArrowRight") { event.preventDefault(); nextStop(); }
   if (event.key === "ArrowLeft") { event.preventDefault(); previousStop(); }
   if (event.key === "Home") { event.preventDefault(); setProgress(0); }

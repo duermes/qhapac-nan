@@ -34,7 +34,7 @@ def test_dpad_buttons_and_eva_controls_in_html_and_css():
 
 def test_canvas_navigation_mode_locks_rover_centered():
     r = read("rover/js/rover.js")
-    assert "map.opts.lockPan" not in r and "map.focusOn(S.lat, S.lon)" in r
+    assert "map.opts.lockPan = tracking" in r and "map.cam.rot = -S.heading" in r
 
 
 def test_bundle_contains_dpad_and_organic_routing():

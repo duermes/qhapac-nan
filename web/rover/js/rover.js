@@ -5,16 +5,17 @@ import { bearing, destination, fmt, haversine } from "/static/shared/js/geo.js";
 import { brandBlock, icon } from "/static/shared/js/icons.js";
 import { entitiesFrom, layerGrid, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
 import { Map2D } from "/static/shared/js/map2d.js";
-import { LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.js";
+import { adaptiveLayers, layerViewport, LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
+import { drawLayer, LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.js";
 import { $, $$, esc, modal, provBadge, simBanner, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 
 const ROVER_ID = new URLSearchParams(location.search).get("rover") || "ROVER_PR1";
 const S = {
   mode: "navigate", view: "2d", radar: false, panels: true, layer: "relief",
-  speed: 0, heading: 135, lat: 0, lon: 0, battery: 1, capacity: 60000,
+  speed: 0, heading: 135, lat: 0, lon: 0, battery: 1, capacity: 120000,
   route: null, target: null, telecom: null, layers: { slope: false, hazard: false, ibio: false, telecom: false },
-  fsm: "GO", slip: 0, pitch: 0, roll: 0, link: null, loc: null,
+  demoKeys: new Set(), simDistance: 0, simEnergy: 0, simSeconds: 0, fsm: "GO", slip: 0, pitch: 0, roll: 0, link: null, loc: null,
 };
 window.chaski = S;
 let region, scenario, map, map3d = null, entities = [], voice, base, catalog = {};
@@ -49,36 +50,127 @@ async function boot() {
   map.toponyms = scenario.toponyms;
   map.on("click", onMapClick);
   map.on("render", drawScale);
+  S.layerDetail = adaptiveLayers(() => ({
+    region: region.key, window: layerViewport(map, S.view === "3d" ? map3d : null),
+    layers: Object.entries(S.layers).filter(([id, enabled]) => enabled && S.layerCanvas?.[id])
+      .map(([id]) => ({ id, key: id, params: {} })),
+  }), refresh);
+  map.on("camera", () => S.layerDetail.update());
   map.focusOn(S.lat, S.lon, map.minScale * 14);
   // telecom grid for link margin sampling (same Khipu layer as the console)
   layerGrid(region.key, "telecom", {}).then((r) => { S.telecom = r.decoded; }).catch(() => {});
   bindUI();
-  voice = new VoiceCopilot({ iface: "rover", onIntent: handleIntent });
+  voice = new VoiceCopilot({ iface: "rover", onIntent: handleIntent, button: $("#voice") });
   api.harness().then((h) => simBanner(h.simulation)).catch(() => {});
   setMode("navigate");
   pickDefaultTarget();
   slowTick();
   setInterval(slowTick, 2000);
+  runDemoClock();
   document.body.dataset.ready = "1";
 }
 
 // ------------------------------------------------------------------ helpers
 function roverEntity() {
-  return { id: S.assetId, name: S.name, kind: "rover", lat: S.lat, lon: S.lon, heading: S.heading };
+  return { id: S.assetId, name: S.name, kind: "rover", lat: S.lat, lon: S.lon, heading: S.heading, primary: true };
 }
+function updatePose() {
+  const e = roverEntity();
+  const index = map.entities.findIndex((item) => item.id === e.id);
+  if (index >= 0) map.entities[index] = e;
+  const ell = S.loc?.ellipse;
+  map.halos = [{ lat: S.lat, lon: S.lon, radius_m: ell?.radius_m ?? 12, color: "rgba(79,208,196,0.35)" }];
+  map.beams = [{ lat: S.lat, lon: S.lon, heading: S.heading, length_m: 90, halfAngle: 23 }];
+  if (S.mode === "navigate") {
+    const { r, c } = region.grid.toRC(S.lat, S.lon);
+    map.cam.cx = c + 0.5;
+    map.cam.cy = r + 0.5;
+    map.cam.rot = -S.heading * Math.PI / 180;
+  }
+  map.draw();
+  if (S.view === "3d" && map3d) {
+    if (S.mode === "navigate") centerBodyFrame();
+    map3d.setRoverLight(map.halos[0], map.beams[0]);
+    if (S.demoDistanceAtMarker !== S.simDistance || S.demoHeadingAtMarker !== S.heading) {
+      map3d.setMarkers(map.entities);
+      S.demoDistanceAtMarker = S.simDistance;
+      S.demoHeadingAtMarker = S.heading;
+    }
+  }
+}
+
+function centerBodyFrame() {
+  const { camera, controls } = map3d;
+  const angle = S.heading * Math.PI / 180;
+  const range = Math.max(1, camera.position.distanceTo(controls.target));
+  const target = map3d.toWorld(S.lat, S.lon);
+  controls.target.copy(target);
+  camera.position.set(target.x - Math.sin(angle) * range * 0.58, target.y + range * 0.815,
+    target.z + Math.cos(angle) * range * 0.58);
+  controls.update();
+}
+
 function refresh() {
   map.entities = [...entities.filter((e) => e.id !== S.assetId && (S.radar || !["poi", "sample"].includes(e.kind) || S.mode !== "navigate")), roverEntity()];
-  if (S.radar) map.entities = [...entities.filter((e) => e.id !== S.assetId), roverEntity()];
-  map.routes = S.route ? [{ id: "route", points: S.route.points, color: "#65d8ff", width: 4, segments: S.route.pnr?.show_pnr ? S.route.pnr.segments : null, pnr: S.route.pnr?.show_pnr ? S.route.pnr.pnr_point : null }] : [];
-  const ell = S.loc?.ellipse;
-  map.halos = ell ? [{ lat: S.lat, lon: S.lon, radius_m: Math.max(ell.radius_m, 30) * 6, color: "rgba(79,208,196,0.30)" }] : [];
-  map.layers = Object.entries(S.layers).filter(([, on]) => on).map(([id]) => ({ id, canvas: S.layerCanvas?.[id], opacity: 0.55, visible: true, stride: 2 })).filter((l) => l.canvas);
-  map.draw();
+  map.routes = S.route ? [{ id: "route", points: S.route.points, color: "#65d8ff", width: 4,
+    segments: S.route.pnr?.show_pnr ? S.route.pnr.segments : null, pnr: S.route.pnr?.pnr_point }] : [];
+  S.layerDetail?.update();
+  map.layers = Object.entries(S.layers).filter(([, on]) => on).map(([id]) => ({
+    id, canvas: S.layerCanvas?.[id], opacity: 0.55, visible: true, stride: LAYER_OVERVIEW_STRIDE,
+    detail: S.layerDetail?.details.get(id),
+    width: region.grid.cols, height: region.grid.rows,
+  })).filter((item) => item.canvas);
+  updatePose();
   if (map3d && S.view === "3d") {
     map3d.setRoutes(map.routes);
     map3d.setMarkers(map.entities);
-
+    const mantleKey = JSON.stringify([S.layer, ...map.layers.map((layer) => layer.detail?.tileKey)]);
+    if (S.mantleKey !== mantleKey) {
+      const canvas = document.createElement("canvas");
+      canvas.width = region.grid.cols; canvas.height = region.grid.rows;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(map.base, 0, 0, canvas.width, canvas.height);
+      for (const layer of map.layers) drawLayer(ctx, layer);
+      map3d.drape(canvas);
+      S.mantleKey = mantleKey;
+    }
   }
+}
+
+// Keyboard operates a browser-only training vehicle. The camera buttons never change this pose.
+function runDemoClock() {
+  let time = performance.now(), lastDraw = time;
+  let wasMoving = false;
+  const frame = (now) => {
+    const dt = Math.min(0.08, (now - time) / 1000);
+    time = now;
+    const keys = S.demoKeys;
+    const turn = Number(keys.has("right")) - Number(keys.has("left"));
+    const throttle = Number(keys.has("up")) - Number(keys.has("down"));
+    S.speed = throttle * (S.speedMax || 2) * (1 - Math.min(0.85, S.slip));
+    const moving = Boolean(turn || throttle);
+    if (moving) {
+      S.heading = (S.heading + turn * 50 * dt + 360) % 360;
+      const distance = S.speed * dt * 4;
+      const point = destination(S.lat, S.lon, S.heading, distance);
+      if (region.grid.contains(point.lat, point.lon)) {
+        S.lat = point.lat; S.lon = point.lon;
+        S.simDistance += Math.abs(distance);
+        S.simSeconds += throttle ? dt * 4 : 0;
+        S.simEnergy += Math.abs(distance) * (0.12 + Math.max(0, S.pitch) * .016 + S.slip * .1);
+      }
+      document.body.dataset.roverDemo = "1";
+    }
+    if ((moving && now - lastDraw >= 33) || (wasMoving && !moving)) {
+      updatePose();
+      updatePanels();
+      S.layerDetail.update();
+      lastDraw = now;
+    }
+    wasMoving = moving;
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 function sampleTelecom(lat, lon) {
@@ -113,7 +205,7 @@ async function slowTick() {
     const previous = S.battery;
     if (ledger.status === "fulfilled") {
       S.capacity = ledger.value.capacity;
-      S.battery = Math.max(0, ledger.value.remaining / S.capacity);
+      S.battery = Math.max(0, (ledger.value.remaining - S.simEnergy) / S.capacity);
     }
     if (traction.status === "fulfilled") {
       const t = traction.value;
@@ -125,12 +217,22 @@ async function slowTick() {
     if (S.telecomSignature !== signature) {
       S.telecom = (await layerGrid(region.key, "telecom", {}).catch(() => null))?.decoded;
     }
+    const moved = S.simDistance;
+    const distance = moved - (S.locDistance || 0);
+    if (distance > 0) {
+      const fix = await api.localization({ state: S.loc, step: { distance_m: distance, heading_deg: S.heading, slip: S.slip } }).catch(() => null);
+      if (fix) {
+        S.locDistance = moved;
+        S.loc = { ...fix.state, ellipse: fix.ellipse, last_fix: fix.last_fix };
+      }
+    }
     S.link = sampleTelecom(S.lat, S.lon);
     const status = await api.fsm({ battery_pct: S.battery * 100, link_margin_db: S.link,
       slope_deg: Math.abs(pitch), emergency_stop: false, pnr_exceeded: !!S.pastPnr }).catch(() => null);
     if (status) { S.fsm = status.state; S.fsmReasons = status.reasons; }
-    if (S.target && !S.planning && (S.telecomSignature !== signature || previous !== S.battery)) {
-      await planTo(S.target, { silent: true });
+    if (S.target && !S.planning && (S.telecomSignature !== signature ||
+      S.simDistance - (S.plannedDistance || 0) > 80 || (!S.simDistance && previous !== S.battery))) {
+      await planTo(S.target, { silent: true, preserveOrigin: !!S.route });
     }
     S.telecomSignature = signature;
     updatePanels();
@@ -154,8 +256,9 @@ function updatePanels() {
   if (dBase != null) {
     const min = dBase / 0.9 / 60;                  // walking time home if the rover fails
     $("#walkback").textContent = `${min.toFixed(0)} min`;
-    $("#walkback").style.color = dBase > 2000 ? "var(--danger)" : dBase > 1600 ? "var(--warn)" : "";
-    $("#walkback-dist").textContent = `${fmt.m(dBase)} a base${dBase > 2000 ? " · fuera de límite a pie" : ""}`;
+    const limit = scenario.eva_policy?.walkback_limit_m ?? 4000;
+    $("#walkback").style.color = dBase > limit ? "var(--danger)" : dBase > 0.8 * limit ? "var(--warn)" : "";
+    $("#walkback-dist").textContent = `${fmt.m(dBase)} a base${dBase > limit ? " · fuera de límite a pie" : ""}`;
   }
   $("#link").textContent = S.link == null ? "sin dato" : `${S.link.toFixed(1)} dB`;
   $("#link").style.color = S.link != null && S.link < 0 ? "var(--danger)" : "";
@@ -209,7 +312,7 @@ function updateGuide() {
     $("#turn-icon").innerHTML = icon(Math.abs(turn) < 10 ? "arrowup" : turn > 0 ? "turnright" : "arrowleft");
     $("#guide-sub").innerHTML = `Rumbo ${brg.toFixed(0)}° hacia ${esc(t.name)} ${S.routeStatus ? `· <span class="gold">${esc(S.routeStatus)}</span>` : ""}`;
   } else {
-    $("#guide-step").textContent = `Rumbo ${brg.toFixed(0)}° directo`;
+    $("#guide-step").textContent = S.routeError ? "Sin corredor viable" : S.planning ? "Evaluando corredor…" : "Sin ruta activa";
     $("#guide-sub").textContent = S.routeError?.detail || t.name;
   }
   $("#meta-corridor").textContent = corridor == null ? "FUERA DE RUTA" : `EN CORREDOR: ${fmt.m(corridor)}`;
@@ -221,16 +324,26 @@ function updateGuide() {
 }
 
 // ------------------------------------------------------------------ actions
-async function planTo(target, { silent } = {}) {
+async function planTo(target, { silent, preserveOrigin } = {}) {
   const revision = S.planRevision = (S.planRevision || 0) + 1;
   S.target = target;
   S.planning = true;
+  S.plannedDistance = S.simDistance;
   try {
-    const res = await api.route({ region_key: region.key,
-      origin: { lat: S.lat, lon: S.lon, id: S.assetId, kind: "rover" },
-      destination: { lat: target.lat, lon: target.lon, id: target.id || null } });
+    const current = { lat: S.lat, lon: S.lon, id: S.assetId, kind: "rover" };
+    const goal = { lat: target.lat, lon: target.lon, id: target.id || null };
+    const params = S.simDistance ? { resources_available: S.battery * S.capacity,
+      ltst_h: (13 + S.simSeconds * 24 / (24.6597 * 3600)) % 24 } : {};
+    let route;
+    if (preserveOrigin && S.route) {
+      const res = await api.replan({ region_key: region.key, current, destination: goal, route_points: S.route.points,
+        return_prefix: S.route.return_prefix || [], asset_id: S.assetId, reevaluate: true, params });
+      route = { ...S.route, points: res.route_points, metrics: res.metrics, pnr: res.pnr, return_prefix: res.return_prefix };
+    } else {
+      const res = await api.route({ region_key: region.key, origin: current, destination: goal, params });
+      route = res.variants[0];
+    }
     if (revision !== S.planRevision) return null;
-    const route = res.variants[0];
     S.route = route;
     S.routeError = null;
     S.routeStatus = route.pnr?.show_pnr ? "Retorno no garantizado después del PNR" : "Retorno con reserva";
@@ -241,7 +354,7 @@ async function planTo(target, { silent } = {}) {
     S.route = null;
     S.routeError = error.body || { detail: error.message };
     const reasons = (S.routeError.reasons || []).map(({ detail }) => `<li>${esc(detail)}</li>`);
-    if (!silent || $("#inspect-title").textContent.startsWith("Ruta")) {
+    if (!silent || $("#inspect-card").dataset.routeDetail === "true") {
       showInspect("Ruta inviable", `<div class="alert-card infeasible-card">${esc(S.routeError.detail)}${reasons.length > 1 ? `<ol>${reasons.join("")}</ol>` : ""}</div>`);
     }
     return null;
@@ -265,6 +378,18 @@ async function safeReturn() {
 
 function setMode(m) {
   S.mode = m;
+  const tracking = m === "navigate";
+  document.body.dataset.roverMode = m;
+  map.opts.lockPan = tracking;
+  if (!tracking) map.cam.rot = 0;
+  if (map3d) {
+    map3d.controls.enablePan = !tracking;
+    map3d.controls.enableRotate = !tracking;
+  }
+  $$("#dpad [data-dir]").forEach((button) => {
+    button.hidden = tracking && !["in", "out"].includes(button.dataset.dir);
+  });
+  $(".camera-controls").open = tracking || window.innerWidth > 700;
   $$(".rover-dock .dock-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === m));
   if (m === "plan") toast("Planificar: haz clic en el mapa o en un POI para trazar ruta rápida", "", 3000);
   refresh();
@@ -302,6 +427,7 @@ function inspectEntity(e) {
 function showInspect(title, html) {
   if (!S.panels) $("#panels-toggle").click();
   $("#inspect-card").hidden = false;
+  $("#inspect-card").dataset.routeDetail = String(title.startsWith("Ruta"));
   $("#inspect-title").textContent = title;
   $("#inspect-body").innerHTML = html;
 }
@@ -310,9 +436,9 @@ async function toggleLayer(id, on) {
   S.layers[id] = on;
   S.layerCanvas ||= {};
   if (on && !S.layerCanvas[id]) {
-    const r = await layerGrid(region.key, id, {});
+    const r = await layerGrid(region.key, id, { stride: LAYER_OVERVIEW_STRIDE });
     if (!r.available) { toast(r.reason, "warn"); S.layers[id] = false; return; }
-    S.layerCanvas[id] = renderLayer(r.decoded, r.layer.colormap, id, r.layer.range_hint?.[0], r.layer.range_hint?.[1]);
+    S.layerCanvas[id] = renderLayer(r.decoded, r.layer.colormap, id, ...r.color_domain);
     (S.layerMeta ||= {})[id] = { name: r.layer.name, units: r.layer.units, colormap: r.layer.colormap, provenance: r.provenance,
       lo: r.layer.range_hint?.[0] ?? r.stats.min, hi: r.layer.range_hint?.[1] ?? r.stats.max };
   }
@@ -334,6 +460,9 @@ async function setView(v) {
       map3d.on("click", onMapClick);
       map3d.drape(map.base);
       map3d.focusOn(S.lat, S.lon, 9000);
+      map3d.on("frame", () => S.layerDetail.update());
+      map3d.controls.enablePan = S.mode !== "navigate";
+      map3d.controls.enableRotate = S.mode !== "navigate";
     } catch (e) { toast("WebGL no disponible", "warn"); return setView("2d"); }
   }
   if (v === "3d") { map3d.resize(); await selectLayer(S.layer); }
@@ -352,6 +481,10 @@ function handleIntent(r) {
   if (r.intent === "select_layer") {
     if (catalog[r.layer_id] || MAP_LAYERS[r.layer_id]) selectLayer(r.layer_id);
     else toast("Capa sin datos disponibles", "warn");
+  }
+  if (r.intent === "plan_target") {
+    const point = entities.find((e) => e.id === r.poi_id);
+    if (point) return planTo(point).then((route) => route ? "Travesía calculada." : "No se encontró una ruta viable.");
   }
   if (r.intent === "poi_info") { const e = entities.find((x) => x.id === r.poi_id); if (e) inspectEntity(e); }
   if (r.intent === "status") toast(`Batería ${fmt.pct(S.battery * 100)} · enlace ${S.link?.toFixed(1) ?? "—"} dB · estado ${S.fsm}`, "", 5000);
@@ -377,23 +510,14 @@ async function selectLayer(id) {
     if (id !== "relief") await toggleLayer(id, true);
     else { refresh(); renderLegend(); }
     if (S.layer !== id) return;
-    if (map3d) {
-      const canvas = document.createElement("canvas");
-      canvas.width = map.base.width; canvas.height = map.base.height;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(map.base, 0, 0);
-      if (S.layerCanvas?.[id]) {
-        ctx.globalAlpha = 0.55;
-        ctx.drawImage(S.layerCanvas[id], 0, 0, canvas.width, canvas.height);
-      }
-      map3d.drape(canvas);
-    }
+    refresh();
   } catch (e) {
     if (S.layer === id) { toast(e.message, "warn"); selectLayer("relief"); }
   }
 }
 
 function moveCamera(direction) {
+  if (S.mode === "navigate" && !["in", "out"].includes(direction)) return;
   if (direction === "center") {
     map.focusOn(S.lat, S.lon);
     if (map3d) map3d.focusOn(S.lat, S.lon, map3d.camera.position.distanceTo(map3d.controls.target));
@@ -418,7 +542,7 @@ function moveCamera(direction) {
   } else if (offset) {
     const { row, col } = map.toGrid(map.w / 2 + 78 * offset[0], map.h / 2 + 78 * offset[1]);
     map.cam.cx = col; map.cam.cy = row;
-    map.clampCam(); map.draw();
+    map.clampCam(); map.draw(); S.layerDetail.update();
   } else map.zoomAt(factor);
 }
 
@@ -426,7 +550,7 @@ function demoDialog() {
   const body = document.createElement("div");
   const draw = async () => {
     const h = await api.harness();
-    body.innerHTML = `<p class="muted">Inyecta contingencias de entrenamiento para revisar el mapa y el corredor de Khipu.</p>
+    body.innerHTML = `<p class="muted">Simulación local · usa WASD o las flechas del teclado para mover el rover.</p><p class="muted">Inyecta contingencias de entrenamiento para revisar el mapa y el corredor de Khipu.</p>
       <div class="btn-row" style="margin-top:10px">${Object.entries(h.available).map(([k, v]) => `<button class="btn" data-inj="${k}">${esc(v.label)}</button>`).join("")}</div>
       <button class="btn" id="abs-fix" style="width:100%;margin-top:8px">Fijación absoluta (orbital)</button>
       <div class="kicker" style="margin-top:10px">Activas</div>${h.active.map((a) => `<div><span class="badge sim">SIM</span> ${esc(a.label)}</div>`).join("") || '<div class="empty-state">Ninguna</div>'}
@@ -477,7 +601,7 @@ function bindUI() {
   document.addEventListener("keydown", (e) => {
     if (e.target.closest("input, select, textarea")) return;
     const k = e.key.toLowerCase();
-    if (keymap[k]) { e.preventDefault(); moveCamera(keymap[k]); }
+    if (keymap[k] && !e.target.closest("[role=dialog]")) { e.preventDefault(); S.demoKeys.add(keymap[k]); }
     if (["+", "=", "-", "c"].includes(k)) moveCamera(k === "c" ? "center" : k === "-" ? "out" : "in");
     if (k === "v") setView(S.view === "2d" ? "3d" : "2d");
     if (k === "1") setMode("navigate");
@@ -485,6 +609,9 @@ function bindUI() {
     if (k === "3") setMode("plan");
     if (k === "k") voice.start();
   });
+  document.addEventListener("keyup", (event) => S.demoKeys.delete(keymap[event.key.toLowerCase()]));
+  window.addEventListener("blur", () => S.demoKeys.clear());
+  document.addEventListener("visibilitychange", () => { if (document.hidden) S.demoKeys.clear(); });
 }
 
 boot().catch((e) => { console.error(e); toast(`Error: ${e.message}`, "danger", 10000); });

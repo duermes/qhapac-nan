@@ -3,6 +3,7 @@ import { api } from "/static/shared/js/api.js";
 import { fmt, haversine } from "/static/shared/js/geo.js";
 import { ASSET_REGISTRY, icon } from "/static/shared/js/icons.js";
 import { layerGrid } from "/static/shared/js/khipu-client.js";
+import { LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
 import { LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.js";
 import { $, $$, createDeck, esc, provBadge, toast } from "/static/shared/js/ui.js";
 import { persist, refreshScene } from "./app.js";
@@ -53,7 +54,7 @@ const CONTROLS = {
   hazard_weight: ["Peso de zonas de peligro", 0, 5, 0.1, 1],
 };
 
-function layerParams(id) {
+export function layerParams(id) {
   const d = ctx.catalog[id];
   const layer = ctx.cur.layers[id];
   const params = {};
@@ -71,9 +72,9 @@ async function ensureLayer(id) {
   L.key = key;
   if (ctx.layerCanvases[key]) return;
   const d = ctx.catalog[id];
-  const res = await layerGrid(ctx.region.key, id, p);
+  const res = await layerGrid(ctx.region.key, id, { ...p, stride: LAYER_OVERVIEW_STRIDE });
   if (!res.available) { toast(`${d.name}: ${res.reason}`, "warn", 5000); L.visible = false; return; }
-  const lo = d.range_hint?.[0], hi = d.range_hint?.[1];
+  const [lo, hi] = res.color_domain;
   ctx.layerCanvases[key] = renderLayer(res.decoded, d.colormap, id, lo, hi);
   if (L.key !== key) return;
   L.stats = res.stats;
@@ -211,10 +212,19 @@ function renderLegend() {
   const kinds = [...new Set((ctx.entities || []).map((e) => e.kind))].filter((kind) => kind !== "hazard");
   const hidden = new Set(s.hidden);
   const visibleLayers = Object.entries(s.layers).filter(([, L]) => s.eyes.analyze && L.visible).map(([id]) => ctx.catalog[id]).filter(Boolean);
-  deck.body.innerHTML = `<div class="kicker">Elementos (filtro de visibilidad)</div>`
-    + kinds.map((k) => { const r = ASSET_REGISTRY[k] || ASSET_REGISTRY.waypoint; return `<div class="legend-item"><span class="sw" style="border-color:${r.color};border-radius:${["poi", "sample", "rover", "astronaut", "antenna"].includes(k) ? "50%" : "0"}"></span>
-      <label for="lg-${k}">${esc(r.label)}</label><label class="switch"><input id="lg-${k}" type="checkbox" data-kind="${k}" ${hidden.has(k) ? "" : "checked"}><span class="track"></span></label></div>`; }).join("")
-    + `<div class="legend-item"><span class="sw" style="border-color:var(--danger);border-style:dashed;border-radius:50%"></span><label for="lg-hazard">Zonas de exclusión (sintéticas)</label><label class="switch"><input id="lg-hazard" type="checkbox" data-kind="hazard" ${hidden.has("hazard") ? "" : "checked"}><span class="track"></span></label></div>`
+  const item = (kind, label, color, round = false) => {
+    const shown = !hidden.has(kind);
+    return `<div class="legend-item"><span class="sw" style="border-color:${color};border-radius:${round ? "50%" : "0"}"></span>
+      <span>${esc(label)}</span>
+      <button class="btn btn-icon" type="button" data-kind="${kind}" aria-pressed="${shown}"
+        aria-label="Mostrar u ocultar ${esc(label)}">${icon(shown ? "eye" : "eyeoff")}</button></div>`;
+  };
+  deck.body.innerHTML = `<div class="kicker">Elementos</div>`
+    + kinds.map((kind) => {
+      const asset = ASSET_REGISTRY[kind] || ASSET_REGISTRY.waypoint;
+      return item(kind, asset.label, asset.color, ["poi", "sample", "rover", "astronaut", "antenna"].includes(kind));
+    }).join("")
+    + item("hazard", "Zonas de exclusión (sintéticas)", "var(--danger)", true)
     + `<hr class="joint"/><div class="kicker">Rutas</div>
       <div class="legend-item"><span class="sw" style="border-color:var(--route-direct);border-style:dashed;height:3px"></span>Ruta directa (euclídea)</div>
       <div class="legend-item"><span class="sw" style="border-color:#65d8ff;height:3px"></span>Retorno con reserva</div>
@@ -224,9 +234,12 @@ function renderLegend() {
         <div class="legend-ramp" style="background:linear-gradient(90deg,${LEGEND_STOPS(d.colormap).join(",")})"></div>
         <div class="dim" style="font-size:10px">${esc(d.units)} · ${esc(d.description)}</div></div>`).join("") : `<div class="empty-state">Relieve MOLA sombreado (derivado de NASA). Activa capas en «Analizar».</div>`)
     + `<hr class="joint"/><div class="dim" style="font-size:10px">Topografía: ${esc(ctx.region.manifest?.source?.product_id || "MOLA")} · ${esc(ctx.region.manifest?.resolution || "")}. Entidades y zonas: escenario sintético.</div>`;
-  $$("[data-kind]", deck.body).forEach((i) => i.addEventListener("change", () => {
+  $$("[data-kind]", deck.body).forEach((i) => i.addEventListener("click", () => {
     const set = new Set(s.hidden);
-    if (i.checked) set.delete(i.dataset.kind); else set.add(i.dataset.kind);
+    if (set.has(i.dataset.kind)) set.delete(i.dataset.kind); else set.add(i.dataset.kind);
+    const shown = !set.has(i.dataset.kind);
+    i.setAttribute("aria-pressed", String(shown));
+    i.innerHTML = icon(shown ? "eye" : "eyeoff");
     s.hidden = [...set];
     persist();
     refreshScene();
@@ -265,6 +278,7 @@ function renderMetrics(t) {
         <dt>Asimetría</dt><dd>${fmt.num(budget ? budget.return - budget.outbound : p.asymmetry, 2)}</dd>
         <dt>Margen ida y vuelta</dt><dd>${fmt.num(p.round_trip_margin, 2)}</dd>
         ${p.show_pnr && p.pnr_point ? `<dt>Punto de no retorno</dt><dd>${fmt.m(p.pnr_point.distance_m)} · ${p.pnr_point.lat.toFixed(4)}, ${p.pnr_point.lon.toFixed(4)}</dd>` : ""}
+        ${p.return_reasons?.length ? `<dt>Condiciones de retorno</dt><dd>${p.return_reasons.map(({ detail }) => esc(detail)).join(" · ")}</dd>` : ""}
       </dl>`;
   deck.body.innerHTML = `<div class="dim" style="font-size:11px;margin-bottom:6px">${esc(t.name)} · perfil ${esc(profile)} · límite de pendiente ${fmt.num(r.slope_limit_deg, 0)}°${r.walkback_limit_m ? ` · walkback ${r.walkback_limit_m} m` : ""}</div>
     <table class="metrics-table"><thead><tr><th>Métrica</th>${vs.map((v) => `<th>${esc(v.label)}</th>`).join("")}</tr></thead><tbody>

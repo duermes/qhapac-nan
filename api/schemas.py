@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from khipu.domain import AssetKind
+from khipu.resources import EVA_WALKBACK_LIMIT_M
 
 Profile = Literal["rover", "astronaut"]
 
@@ -44,7 +45,7 @@ class RouteParams(BaseModel):
     max_distance_m: float | None = Field(default=None, gt=0)
 
     max_slope_deg: float | None = Field(default=None, gt=0, le=45)
-    walkback_limit_m: float | None = Field(default=None, ge=1000, le=2000)
+    walkback_limit_m: float | None = Field(default=None, ge=1000, le=EVA_WALKBACK_LIMIT_M)
     reserve_fraction: float | None = Field(default=None, ge=0, le=0.8)
     reserve_o2_fraction: float | None = Field(default=None, ge=0, le=0.8)
     reserve_water_fraction: float | None = Field(default=None, ge=0, le=0.8)
@@ -73,6 +74,8 @@ class ReplanRequest(BaseModel):
     session_id: str | None = None
     current: LatLon
     destination: LatLon
+    reevaluate: bool = False
+    return_prefix: list[EvaSurfacePoint] = Field(default_factory=list, max_length=10000)
     route_points: list[dict[str, Any]] = []
     obstacles: list[dict[str, Any]] = []
     profile: Profile = "rover"
@@ -148,9 +151,17 @@ class ExportRequest(BaseModel):
     name: str = "travesia"
 
 
+class VoicePoint(BaseModel):
+    id: str = Field(max_length=80)
+    name: str = Field(max_length=160)
+    description: str = Field(default="", max_length=500)
+
+
 class VoiceRequest(BaseModel):
+    language: Literal["es", "en"] = "es"
     text: str = Field(max_length=500)
     interface: Literal["console", "rover", "hud"] = "console"
+    points: list[VoicePoint] = Field(default_factory=list, max_length=100)
 
 
 class TelemetrySnapshot(BaseModel):
@@ -192,7 +203,7 @@ class EvaVitalsRequest(BaseModel):
     grip_fraction: float = 0.2
     grip_minutes: float = 0.0
     distance_to_base_m: float = 0.0
-    walkback_limit_m: float = 2000.0
+    walkback_limit_m: float = Field(default=EVA_WALKBACK_LIMIT_M, ge=1000, le=EVA_WALKBACK_LIMIT_M)
 
 
 class EvaSurfacePoint(BaseModel):
@@ -204,6 +215,7 @@ class EvaSurfacePoint(BaseModel):
 class EvaSurfaceRoute(BaseModel):
     asset_id: str
     points: list[EvaSurfacePoint] = Field(min_length=2, max_length=2000)
+    ltst_h: float = Field(default=13, ge=0, le=24)
     available_o2_kg: float = Field(ge=0, le=1.2)
     available_water_kg: float | None = Field(default=None, ge=0, le=3.6)
     available_battery_wh: float | None = Field(default=None, ge=0, le=1100)

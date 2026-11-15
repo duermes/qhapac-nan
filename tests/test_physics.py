@@ -24,7 +24,7 @@ def test_plss_rates_and_walkback_envelope():
     assert r_work.o2_kg_h > r_rest.o2_kg_h > 0
     assert 0.02 < r_rest.o2_kg_h < 0.06  # ~0.032 kg/h at 150 W
     full = met.walkback_envelope_m(met.SuitConsumables())
-    assert full["walkback_m"] <= 2000.0 and full["policy_limit_m"] == 2000.0
+    assert full["walkback_m"] <= 4000.0 and full["policy_limit_m"] == 4000.0
     low = met.walkback_envelope_m(met.SuitConsumables(o2_kg=0.02))
     assert low["walkback_m"] < full["walkback_m"]
     assert low["limiting_resource"] == "o2"

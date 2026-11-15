@@ -14,6 +14,8 @@ export class Terrain3D {
         this.colliders = [];
         this.collectibleSamples = [];
         this.pois = [];
+        this.companions = [];
+        this.companionTime = 0;
         this.routeGroup = new THREE.Group();
         this.scene.add(this.routeGroup);
         this.baseCoord = { x: -65, z: -60, name: "Base Alfa Jezero", type: "base" };
@@ -368,9 +370,9 @@ export class Terrain3D {
         this.initRoverModel(-45, -105, "Rover Logístico RC-04", true);
         this.initCompanionAstronaut(this.baseCoord.x + 7, this.baseCoord.z + 18, "Ing. Vega (Apoyo EVA)", "scanner");
         this.initCompanionAstronaut(this.targetCoord.x - 8, this.targetCoord.z - 6, "Tte. Chen (Exobiología)", "antenna");
-        this.initCompanionAstronaut(-95, -35, "Ing. Morales (Telecomunicaciones)", "antenna");
+        this.initCompanionAstronaut(-89, -34, "Ing. Morales (Telecomunicaciones)", "antenna");
         this.initCompanionAstronaut(-20, 75, "Dra. Sato (Astrobiología)", "scanner");
-        this.initCompanionAstronaut(75, -60, "Esp. Rossi (Perforación de Subsuelo)", "scanner");
+        this.initCompanionAstronaut(70, -59, "Esp. Rossi (Perforación de Subsuelo)", "scanner");
         this.initInteractiveScienceStations();
         const outcropY = this.getSmoothHeightAt(this.targetCoord.x, this.targetCoord.z);
         const outcropGroup = new THREE.Group();
@@ -749,9 +751,13 @@ export class Terrain3D {
         companionGroup.position.set(ax, ay, az);
         companionGroup.rotation.y = this.random() * Math.PI * 2;
         this.scene.add(companionGroup);
-        this.colliders.push({ x: ax, z: az, radius: 1.2, name: name });
+        const collider = { x: ax, z: az, radius: 1.2, name };
+        this.colliders.push(collider);
+        const actor = { group: companionGroup, leftArm, rightArm, leftLeg, rightLeg, collider, ax, az,
+            activity: this.companions.length % 2 === 0 ? "walking" : "working", phase: this.companions.length * 1.7 };
+        this.companions.push(actor);
         this.pois.push({
-            x: ax,
+            actor, x: ax,
             z: az,
             name: name,
             tag: "CREW EVA",
@@ -761,6 +767,33 @@ export class Terrain3D {
             description: "Miembro de la tripulación científica realizando muestreo geológico en superficie."
         });
     }
+    updateCompanions(dt) {
+        this.companionTime += dt;
+        for (const actor of this.companions) {
+            const time = this.companionTime + actor.phase;
+            const { group, leftArm, rightArm, leftLeg, rightLeg, collider } = actor;
+            if (actor.activity === "walking") {
+                const phase = time * 0.3;
+                const x = actor.ax + 2.2 * Math.sin(phase);
+                const z = actor.az + 1.8 * Math.sin(phase * 0.65);
+                const blocked = this.colliders.some(other => other !== collider &&
+                    Math.hypot(other.x - x, other.z - z) < other.radius + collider.radius);
+                if (!blocked) {
+                    collider.x = x; collider.z = z;
+                    group.position.set(x, this.getSmoothHeightAt(x, z), z);
+                    group.rotation.y = Math.atan2(2.2 * Math.cos(phase), 1.17 * Math.cos(phase * 0.65));
+                }
+                const swing = blocked ? 0 : 0.36 * Math.sin(time * 6);
+                leftLeg.rotation.x = swing; rightLeg.rotation.x = -swing;
+                leftArm.rotation.x = -swing; rightArm.rotation.x = swing;
+            } else {
+                leftArm.rotation.x = -0.75 + 0.18 * Math.sin(time * 2.8);
+                rightArm.rotation.x = -0.55 - 0.22 * Math.sin(time * 2.8);
+                group.rotation.z = 0.04 * Math.sin(time * 1.2);
+            }
+        }
+    }
+
     pathBlocked(x0, z0, x1, z1, padding = 0.65, boundary = 2) {
         const half = this.gridSize / 2 - boundary;
         if (Math.abs(x1) > half || Math.abs(z1) > half) return true;

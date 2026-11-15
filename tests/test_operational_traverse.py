@@ -1,9 +1,14 @@
 """Regression coverage for the single-route, resource-limited planning contract."""
+from types import SimpleNamespace
+
+import numpy as np
 import pytest
 
 from conftest import BASE, ROVER, needs_mola
 from khipu.geodesy import haversine_m
+from khipu.navigation import TravelForecast, check_retreat
 from khipu.resources import assess_route, route_metrics
+from khipu.terrain import synthetic_terrain
 
 
 @needs_mola
@@ -31,7 +36,7 @@ def test_virtual_resources_are_used_and_deployed_assets_are_readonly(client):
         assert patch.status_code == 200 and patch.json()["lat"] == 18.439
         body["origin"]["lat"] = 18.439
         route = client.post("/api/route", json=body).json()["variants"][0]
-        assert route["pnr"]["available"] == 50000 and route["pnr"]["reserve"] == 15000
+        assert route["pnr"]["available"] == 50000 and route["pnr"]["reserve"] == 30000
         assert client.patch("/api/assets/ROVER_PR1", json={"lat": 20}).status_code == 409
     finally:
         client.delete(f"/api/assets/{origin['id']}")
@@ -85,3 +90,48 @@ def test_non_temporal_model_control_changes_layer_and_temporal_controls_match_ca
     a = client.get("/api/layers/insolation?ltst_h=13&helio_au=1.3&include_grid=false").json()
     b = client.get("/api/layers/insolation?ltst_h=13&helio_au=1.7&include_grid=false").json()
     assert a["stats"]["max"] > b["stats"]["max"]
+
+
+def test_pnr_accounts_for_sunset_during_retreat_with_ample_resources():
+    terrain = synthetic_terrain(40, 40, kind="flat")
+    link = np.full(terrain.shape, 20)
+    inventory = {"battery_wh": (120000, 120000)}
+    reserve = {"battery_wh": 0.25}
+
+    def snapshot(name, params):
+        if name == "temperature":
+            return SimpleNamespace(data=np.full(terrain.shape, -25))
+        return SimpleNamespace(data=np.full(terrain.shape, 300 if params["ltst_h"] < 18 else 0))
+
+    manager = SimpleNamespace(ctx=SimpleNamespace(terrain=terrain), snapshot=snapshot)
+    points = [{"lat": 18.46, "lon": 77.43 + i * 0.001, "elevation_m": 0} for i in range(12)]
+
+    def run(hour):
+        forecast = TravelForecast(manager, link, {"ltst_h": hour}, "rover", 1)
+        path, pnr = assess_route(points, "rover", inventory, reserve, 1)
+        assert not forecast.violations(path)
+        assert pnr["status"] == "round_trip_safe"
+        return check_retreat(path, pnr, forecast, inventory, reserve)
+
+    _, daylight = run(13)
+    assert daylight["pnr_point"] is None
+    path, dusk = run(17.6)
+    assert dusk["show_pnr"] and dusk["round_trip_margin"] > 0
+    assert {reason["code"] for reason in dusk["return_reasons"]} == {"darkness"}
+    assert dusk["pnr_point"]["distance_m"] == path[dusk["pnr_index"]]["distance_m"]
+    assert 0 < dusk["pnr_point"]["distance_m"] < path[-1]["distance_m"]
+
+
+@needs_mola
+def test_layer_window_uses_native_samples_and_keeps_global_color_domain(client):
+    url = "/api/layers/slope"
+    overview = client.get(url, params={"stride": 4}).json()
+    bounded = client.get(url, params={"stride": 1, "row": 10, "col": 10, "rows": 12, "cols": 16})
+    assert bounded.status_code == 200
+    tile = bounded.json()
+    assert tile["color_domain"] == overview["color_domain"]
+    assert tile["grid"]["stride"] == 1 and overview["grid"]["stride"] == 4
+    assert {key: tile["grid"][key] for key in ("row", "col", "rows", "cols")} == {
+        "row": 10, "col": 10, "rows": 12, "cols": 16}
+    assert client.get(url, params={"row": 10}).status_code == 422
+    assert client.get(url, params={"row": 10000, "col": 10, "rows": 12, "cols": 16}).status_code == 422

@@ -69,7 +69,7 @@ export const api = {
   swarm: () => request("GET", "/api/swarm/status"),
   failover: (force_out) => request("POST", "/api/swarm/failover", { force_out }),
   export: (fmt, route, name) => request("POST", `/api/export/${fmt}`, { route, name }),
-  voice: (text, iface) => request("POST", "/api/voice/command", { text, interface: iface }),
+  voice: (text, iface, points = [], language = "es") => request("POST", "/api/voice/command", { text, interface: iface, points, language }),
   fsm: (snap) => request("POST", "/api/fsm/evaluate", snap),
   localization: (body) => request("POST", "/api/localization", body),
   autopilot: (body) => request("POST", "/api/autopilot/command", body),

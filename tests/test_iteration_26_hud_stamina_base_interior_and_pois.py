@@ -45,4 +45,5 @@ def test_hud_voice_agent_includes_poi_info_and_filters():
     assert interpret("filtra algo raro", pois)["intent"] == "clarify"
     assert interpret("muestra capa", pois)["intent"] == "clarify"
     hud = read("hud/js/hud.js")
-    assert 'r.intent === "poi_info"' in hud and 'r.intent === "filter_pois"' in hud
+    assert 'intent === "filter_pois"' in hud
+    assert interpret("ruta a estromatolito", pois, "hud")["intent"] == "plan_target"

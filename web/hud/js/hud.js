@@ -4,15 +4,16 @@ import { ASSET_REGISTRY, icon } from "/static/shared/js/icons.js";
 import { entitiesFrom, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
 import { $, $$, esc, modal, simBanner, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
+import { currentLanguage } from "/static/shared/js/language.js";
 import { EvaScene } from "./scene.js";
 import { consume, createVitals, refreshVitals, renderAlerts, renderVitals } from "./vitals.js";
 import { localRoute } from "./navigation.js";
 import { evaRequest } from "./eva-api.js";
 const EVA_ID = new URLSearchParams(location.search).get("eva") || "EVA_01";
 const SAMPLE_CAPACITY = 16;
-const H = { x: 0, z: 0, speed: 0, keys: new Set(), targets: [], ti: 0, route: null, samples: [], filter: null, rate: 3, sos: false, inside: false };
+const H = { eventAlerts: new Map(), conditionAlerts: [], x: 0, z: 0, speed: 0, keys: new Set(), targets: [], ti: 0, route: null, samples: [], filter: null, rate: 3, sos: false, inside: false };
 window.nawi = H;
-let region, scenario, scene, entities, base, vit, voice, walkLimit = 2000;
+let region, scenario, scene, entities, base, vit, voice, walkLimit = 4000;
 function iconize() { $$("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); }); }
 async function boot() {
     iconize();
@@ -24,7 +25,7 @@ async function boot() {
     }
     scenario = await loadScenario();
     entities = entitiesFrom(scenario);
-    walkLimit = scenario.eva_policy?.walkback_limit_m || 2000;
+    walkLimit = scenario.eva_policy?.walkback_limit_m || 4000;
     const me = entities.find((e) => e.id === EVA_ID) || entities.find((e) => e.kind === "astronaut");
     base = entities.find((e) => e.kind === "base");
     $("#eva-id").textContent = EVA_ID.replace("_", "-");
@@ -55,7 +56,9 @@ async function boot() {
         H.o2Start = vit.o2_kg;
     }
     catch { }
-    voice = new VoiceCopilot({ iface: "hud", onIntent: handleIntent });
+    voice = new VoiceCopilot({ iface: "hud", onIntent: handleIntent, button: $("#voice-btn"),
+        points: () => H.targets.filter((point) => !H.samples.includes(point.id)).map(({ id, name, description }) =>
+            ({ id, name, description: description || "" })) });
     bind();
     api.harness().then((h) => { simBanner(h.simulation); if (h.active.some((a) => a.kind === "suit_leak"))
         vit.leak = 2.2; }).catch(() => { });
@@ -102,28 +105,14 @@ function panels() {
     $("#azimuth").textContent = `${String(Math.round(hdg)).padStart(3, "0")}° AZ`;
     $("#ladder").style.transform = `translateY(${scene.pitch * 60}px)`;
     const t = target();
-    if (t) {
-        const dist = haversine(p.lat, p.lon, t.lat, t.lon);
+    if (t && H.route && !H.inside) {
         const brg = bearing(p.lat, p.lon, t.lat, t.lon);
-        const localTarget = scene.toLocal(t.lat, t.lon);
-        const dz = scene.surfaceElevation(localTarget.x, localTarget.z) - e;
-        $("#goal-dist").textContent = fmt.m(H.route?.metrics.distance_m ?? dist);
-        $("#goal-name").textContent = t.name;
-        $("#goal-brg").textContent = `${String(Math.round(brg)).padStart(3, "0")}°`;
-        $("#goal-eta").textContent = H.route ? fmt.dur(H.route.metrics.duration_s) : "—";
-        $("#goal-dz").textContent = `${dz >= 0 ? "+" : ""}${dz.toFixed(1)} m`;
-        const tBase = base ? haversine(t.lat, t.lon, base.lat, base.lon) : 0;
-        const safe = !H.routeError && tBase <= (vit.last?.walkback?.walkback_m ?? walkLimit) && (!H.route || H.route.pnr.status === "round_trip_safe");
-        $("#goal-safe").textContent = H.routeError ? "Sin ruta transitable" : safe ? "Retorno con reserva" : "Reserva insuficiente";
-        $("#goal-safe").className = safe ? "ok" : "bad";
-    const pnr = H.route?.pnr?.pnr_point;
-    $("#goal-pnr").hidden = !pnr;
-    if (pnr) $("#goal-pnr").textContent = `PNR · ${fmt.lat(pnr.lat)}, ${fmt.lon(pnr.lon)} · ${fmt.m(pnr.distance_m)}`;
+        $("#director").hidden = false;
         $("#director").style.transform = `translateX(-50%) rotate(${((brg - hdg + 540) % 360) - 180}deg)`;
-    }
+    } else $("#director").hidden = true;
     const fov = entities.filter((x) => x.id !== EVA_ID && !H.samples.includes(x.id) && !H.inside).map((x) => ({ x, d: haversine(p.lat, p.lon, x.lat, x.lon), rel: ((bearing(p.lat, p.lon, x.lat, x.lon) - hdg + 540) % 360) - 180 }))
         .filter((o) => Math.abs(o.rel) <= 45 && o.d <= 2500 && (!H.filter || H.filter.includes(o.x.kind))).sort((a, b) => a.d - b.d).slice(0, 10);
-    $("#fov-list").innerHTML = fov.length ? fov.map((o) => { const reg = ASSET_REGISTRY[o.x.kind] || ASSET_REGISTRY.poi; return `<button class="fov-item ${t && o.x.id === t.id ? "active" : ""}" data-id="${esc(o.x.id)}" style="color:${reg.color}">${icon(reg.icon)}<span class="n">${esc(o.x.name)}</span><span class="d">${fmt.m(o.d)}</span></button>`; }).join("")
+    $("#fov-list").innerHTML = fov.length ? fov.map((o) => { const reg = ASSET_REGISTRY[o.x.kind] || ASSET_REGISTRY.poi; return `<div class="fov-item ${t && o.x.id === t.id ? "active" : ""}" style="color:${reg.color}">${icon(reg.icon)}<span class="n" data-no-localize>${esc(o.x.name)}</span><span class="d">${fmt.m(o.d)}</span></div>`; }).join("")
         : `<div class="small dim">Nada en el campo visual${H.filter ? " (filtro activo)" : ""}</div>`;
     scene.markers.forEach((m) => { m.hidden = H.filter ? !H.filter.includes(m.e.kind) : false; });
     const dBase = base ? haversine(p.lat, p.lon, base.lat, base.lon) : Infinity;
@@ -161,6 +150,21 @@ async function flushConsumption() {
   return H.ledgerQueue;
 }
 
+function renderHudAlerts() {
+    renderAlerts([...H.conditionAlerts, ...H.eventAlerts.values()]);
+}
+
+function eventAlert(code, text, level = "warning", duration = 5500) {
+    const alert = { code, level, text };
+    H.eventAlerts.set(code, alert);
+    renderHudAlerts();
+    setTimeout(() => {
+        if (H.eventAlerts.get(code) !== alert) return;
+        H.eventAlerts.delete(code);
+        renderHudAlerts();
+    }, duration);
+}
+
 async function slow() {
   if (H.slowBusy || H.resupplying) return;
   H.slowBusy = true;
@@ -182,9 +186,10 @@ async function slow() {
     if (vit.effort.heartRateBpm > 160) alerts.push({ level: "warning", code: "HR", text: "Frecuencia cardíaca elevada" });
     if (H.sos) alerts.push({ level: "critical", code: "SOS", text: "Emergencia EVA declarada — retorno asistido" });
     if (vit.leak) alerts.push({ level: "critical", code: "LEAK", text: "Fuga en traje (simulación): consumo O₂ x2.2" });
-    if (!H.inside && H.routeError) alerts.push({ level: "warning", code: "ROUTE", text: H.routeError });
-    if (H.notice && H.notice.until > performance.now()) alerts.push({ level: "info", code: "ACTION", text: H.notice.text });
-    renderAlerts(alerts);
+    if (!H.inside && H.storm) alerts.push({ level: "critical", code: "STORM", text: "Tormenta de polvo de entrenamiento" });
+    if (!result) alerts.push({ level: "warning", code: "CONNECTION", text: "Sin enlace con Khipu" });
+    H.conditionAlerts = alerts;
+    renderHudAlerts();
     $("#traction").textContent = H.inside ? "HÁBITAT PRESURIZADO · ENTRENAMIENTO" : hazard.hasHazard ? hazard.message : H.gradient > 0.2 ? "SUBIDA ESCARPADA · AVANCE REDUCIDO" : "TRACCIÓN NOMINAL";
     relief();
     scene.updateMissionMonitor(vit, H.samples.length);
@@ -192,6 +197,7 @@ async function slow() {
     const active = await api.harness().catch(() => null);
     if (active) {
       simBanner(active.simulation);
+      H.storm = active.active.some((event) => event.kind === "dust_storm");
       vit.leak = active.active.some((event) => event.kind === "suit_leak") ? 2.2 : 0;
       const tag = JSON.stringify(active.active.map(({ id, t }) => [id, t]));
       if (typeof H.contingencies === "string" && H.contingencies !== tag) planToTarget(true);
@@ -216,7 +222,10 @@ function relief() {
 
 async function planToTarget(silent) {
   const t = target();
-  if (!t || H.inside || H.samples.includes(t.id)) return;
+  if (!t || H.inside || H.samples.includes(t.id)) {
+    if (!silent) eventAlert("ROUTE", H.inside ? "Sal de la base para iniciar la guía." : "No hay un objetivo disponible.");
+    return null;
+  }
   const version = H.planVersion = (H.planVersion || 0) + 1;
   H.planning = true;
   try {
@@ -224,20 +233,24 @@ async function planToTarget(silent) {
     const points = localRoute(scene, { x: H.x, z: H.z }, t);
     if (points.length < 2) { H.route = null; H.routeError = null; scene.setRoute(null); return; }
     const route = await evaRequest("surface-route", { asset_id: EVA_ID, points, available_o2_kg: vit.o2_kg,
-      available_water_kg: vit.water_kg, available_battery_wh: vit.battery_wh });
+      available_water_kg: vit.water_kg, available_battery_wh: vit.battery_wh,
+      ltst_h: (13 + vit.elapsed_s * 24 / (24.6597 * 3600)) % 24 });
     if (version !== H.planVersion) return;
     H.route = route;
+    H.eventAlerts.delete("ROUTE");
+    renderHudAlerts();
     H.lastPlannedO2 = vit.o2_kg;
     H.routeError = null;
     scene.setRoute(route.points, route.pnr);
-    if (!silent) toast(`Ruta Khipu: ${fmt.m(route.metrics.distance_m)} · ${route.pnr.status === "round_trip_safe" ? "retorno con reserva" : "reserva insuficiente"}`, route.pnr.status === "round_trip_safe" ? "safe" : "danger");
+    if (!silent && !voice?.listening) toast(`Ruta Khipu: ${fmt.m(route.metrics.distance_m)} · ${route.pnr.status === "round_trip_safe" ? "retorno con reserva" : "reserva insuficiente"}`, route.pnr.status === "round_trip_safe" ? "safe" : "danger");
+    return route;
   } catch (e) {
     if (version !== H.planVersion) return;
     H.route = null;
     H.routeError = e.message;
     scene.setRoute(null);
-    $("#goal-safe").textContent = "Sin ruta transitable";
-    if (!silent) toast(e.message, "danger", 6000);
+    eventAlert("ROUTE", e.message);
+    return null;
   } finally { if (version === H.planVersion) H.planning = false; }
 }
 
@@ -284,18 +297,39 @@ async function interact(key) {
         vit.grippingUntil = performance.now() + 2500;
         vit.effort.collect();
         vit.battery_wh = Math.max(0, vit.battery_wh - 2);
-        H.notice = { text: `${s.name} volvió a estado operativo`, until: performance.now() + 8000 };
-        toast(H.notice.text, "safe");
+        eventAlert("ACTION", `${s.name} volvió a estado operativo`, "info");
         slow();
       } }] : [{ label: "Cerrar" }]
     });
   } else if (key !== "f" && H.prompt?.companion) {
     const point = H.prompt.companion;
-    modal({ title: point.name, body: `<p>${esc(point.description || "Punto de interés de la misión de entrenamiento.")}</p>`,
-      actions: [{ label: "Cerrar" }, { label: "Fijar como objetivo", cls: "btn-gold", onClick: () => {
-        const index = H.targets.findIndex((target) => target.id === point.id);
-        if (index >= 0) { H.ti = index; planToTarget(false); }
-      } }] });
+    const data = document.createElement("div");
+    data.innerHTML = `<p>${esc(point.description || "Punto de interés de entrenamiento.")}</p>
+      <dl class="kv"><dt>Posición</dt><dd>${fmt.lat(point.lat)}, ${fmt.lon(point.lon)}</dd>
+      <dt>Distancia</dt><dd>${fmt.m(Math.hypot(H.x - point.x, H.z - point.z))}</dd></dl>`;
+    const actions = [{ label: "Cerrar" }];
+    if (point.kind === "astronaut") actions.push({
+      label: "Hablar", cls: "btn-gold", onClick: () => {
+        const speech = point.activity === "walking"
+          ? "Estoy recorriendo el sector. Las muestras cercanas ya están marcadas."
+          : "Estoy revisando el equipo. Si la torre indica una falla, puedes reparar el módulo de alimentación.";
+        data.textContent = speech;
+        voice.speak(speech);
+        return true;
+      },
+    });
+    if (point.kind === "rover") actions.push({
+      label: "Telemetría", cls: "btn-gold", onClick: async () => {
+        const match = point.name.match(/([A-Z]+)-(\d+)/);
+        const roster = scenario.assets.find((a) => match && a.id === "ROVER_" + match[1] + Number(match[2]));
+        const ledger = roster ? await api.ledger(roster.id, "rover").catch(() => null) : null;
+        const remaining = ledger && ledger.capacity > 0 ? `${(ledger.remaining / ledger.capacity * 100).toFixed(0)} %` : "sin lectura";
+        data.innerHTML += `<dl class="kv"><dt>Batería</dt><dd>${remaining}</dd>
+          <dt>Velocidad de referencia</dt><dd>${roster?.speed_mps ?? "—"} m/s</dd><dt>Origen</dt><dd>Entrenamiento</dd></dl>`;
+        return true;
+      },
+    });
+    modal({ title: point.name, body: data, actions });
   } else if (key !== "f" && H.prompt?.id) {
     if (H.samples.length >= SAMPLE_CAPACITY) { toast("Inventario completo: regresa al hábitat", "danger"); return; }
     const sample = scene.character.tryCollectNearestSample();
@@ -318,37 +352,45 @@ function cycleCamera() {
     if (scene.cameraMode === "third") scene.pitch = -0.15;
     scene.renderer.domElement.focus({ preventScroll: true });
 }
-function handleIntent(r) {
-    if (r.intent === "poi_info") {
-        let i = H.targets.findIndex((t) => t.id === r.poi_id);
-        if (i < 0) {
-            const original = entitiesFrom(scenario).find(e => e.id === r.poi_id);
-            const normalize = name => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-            const words = normalize(original?.name || "").split(/\W+/).filter(word => word.length > 3);
-            const ranked = H.targets.map((t, index) => ({ index, score: words.filter(word => normalize(t.name).includes(word)).length })).sort((a, b) => b.score - a.score);
-            if (ranked[0]?.score) i = ranked[0].index;
+async function handleIntent(result) {
+    const { intent } = result;
+    if (["plan_target", "next_target", "safe_return"].includes(intent)) {
+        const options = H.targets.filter((point) => !H.samples.includes(point.id));
+        const next = intent === "plan_target" ? options.find((point) => point.id === result.poi_id)
+            : intent === "safe_return" ? base
+            : options[(options.findIndex((point) => point.id === target()?.id) + 1) % options.length];
+        if (!next) return "No hay un objetivo disponible.";
+        H.ti = H.targets.indexOf(next);
+        const route = await planToTarget();
+        if (!route) return H.routeError || "No se pudo trazar la ruta.";
+        const marker = route.pnr?.pnr_point;
+        if (currentLanguage() === "en") {
+            const returnNote = marker
+                ? `Point of no return at ${fmt.m(marker.distance_m)}` : "Return reserve maintained throughout";
+            return `Route to ${next.name}. Distance ${fmt.m(route.metrics.distance_m)}. ${returnNote}.`;
         }
-        if (i >= 0) {
-            H.ti = i;
-            planToTarget();
-        }
+        return `Ruta a ${next.name}. Distancia ${fmt.m(route.metrics.distance_m)}. ${marker
+            ? "Punto de no retorno a " + fmt.m(marker.distance_m) : "Retorno con reserva en todo el recorrido"}.`;
     }
-    if (r.intent === "filter_pois")
-        H.filter = r.category === "all" ? null : { science: ["poi"], sample: ["sample"], vehicle: ["rover"], base: ["base", "habitat", "landmark"], hazard: ["hazard"] }[r.category] || null;
-    if (r.intent === "safe_return") {
-        const i = H.targets.findIndex((t) => t.kind === "base");
-        if (i >= 0) {
-            H.ti = i;
-            planToTarget();
-        }
+    if (intent === "clear_route") {
+        H.planVersion = (H.planVersion || 0) + 1;
+        H.planning = false;
+        H.ti = -1;
+        H.route = null;
+        scene.setRoute(null);
     }
-    if (r.intent === "emergency_stop")
-        setSos(true);
-    if (r.intent === "status")
-        toast(`O₂ ${((vit.o2_kg / 1.2) * 100).toFixed(0)}% · base a ${fmt.m(H.dBase)}`, "", 5000);
-    if (r.intent === "help")
-        toggleHelp(true);
-    $("#fov-filter").textContent = H.filter ? `filtro: ${r.category}` : "";
+    if (intent === "filter_pois") {
+        H.filter = { science: ["poi"], sample: ["sample"], vehicle: ["rover"], base: ["base", "habitat", "landmark"], hazard: ["hazard"] }[result.category] || null;
+        $("#fov-filter").textContent = H.filter ? "Filtro activo" : "";
+    }
+    if (intent === "emergency_stop") setSos(true);
+    if (intent === "status") {
+        const oxygen = (vit.o2_kg / 1.2 * 100).toFixed(0);
+        const distance = fmt.m(H.dBase);
+        return currentLanguage() === "en" ? `Oxygen ${oxygen} percent. Base is ${distance} away.`
+            : `Oxígeno ${oxygen} por ciento. Base a ${distance}.`;
+    }
+    if (intent === "help") toggleHelp(true);
 }
 function setSos(on) {
     H.sos = on;
@@ -364,7 +406,7 @@ function setSos(on) {
 }
 function renderHelp() {
     $("#help-body").innerHTML = `<p><b>Moverse:</b> W/S o ▲▼ avanzar/retroceder · A/D o ◀▶ girar · arrastrar para mirar.</p>
-    <p><b>E</b> usar la esclusa, recolectar, hablar o inspeccionar y reparar equipos · <b>C</b> para cambiar de cámara. En vista externa, toca la escena para volver · <b>K</b> Khipu voz · <b>H</b> ayuda · <b>Tab</b> siguiente objetivo.</p>
+    <p><b>E</b> usar la esclusa, recolectar, hablar o inspeccionar y reparar equipos · <b>C</b> para cambiar de cámara. En vista externa, toca la escena para volver · <b>K</b> Khipu voz · <b>H</b> ayuda. Di «ruta a» y el nombre del objetivo.</p>
     <p><b>Datos:</b> MOLA regional (463 m/px), con montes, dunas y rocas sintéticos para entrenamiento local. Consumibles: Khipu (Minetti/PLSS/Rohmert). Estamina: esfuerzo acumulado con recuperación. Entidades: escenario sintético.</p>
     <p><b>Walkback:</b> límite a pie ${walkLimit} m con reserva del 25%. Recalcular no repone O₂.</p>`;
 }
@@ -410,11 +452,6 @@ function bind() {
             toggleHelp();
         if (k === "k")
             voice.start();
-        if (k === "tab") {
-            e.preventDefault();
-            H.ti = (H.ti + 1) % H.targets.length;
-            planToTarget(true);
-        }
     });
     document.addEventListener("keyup", (e) => { const k = km[e.key.toLowerCase()]; if (k)
         H.keys.delete(k); });
@@ -432,13 +469,11 @@ function bind() {
     $("#help-btn").addEventListener("click", () => toggleHelp());
     $("#help-close").addEventListener("click", () => toggleHelp(false));
     $("#voice-btn").addEventListener("click", () => voice.start());
-    $("#goal-next").addEventListener("click", () => { H.ti = (H.ti + 1) % H.targets.length; planToTarget(true); });
-    $("#goal-prev").addEventListener("click", () => { H.ti = (H.ti - 1 + H.targets.length) % H.targets.length; planToTarget(true); });
-    $("#goal-route").addEventListener("click", () => planToTarget(false));
-    $("#fov-list").addEventListener("click", (e) => { const b = e.target.closest("[data-id]"); if (!b)
-        return; const i = H.targets.findIndex((t) => t.id === b.dataset.id); if (i >= 0) {
-        H.ti = i;
-        planToTarget(true);
-    } });
+    $("#eva-demo-toggle").addEventListener("click", (event) => {
+        const controls = $("#eva-demo-controls");
+        controls.hidden = !controls.hidden;
+        event.currentTarget.setAttribute("aria-expanded", String(!controls.hidden));
+        if (controls.hidden) H.keys.clear();
+    });
 }
 boot().catch((e) => { console.error(e); toast(`Error: ${e.message}`, "danger", 10000); });

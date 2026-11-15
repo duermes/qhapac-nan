@@ -81,14 +81,14 @@ class SuitConsumables:
 
 
 def walkback_envelope_m(consumables: SuitConsumables, speed_mps: float = 0.9, total_mass_kg: float = 160.0,
-                        reserve_fraction: float = 0.25, policy_limit_m: float = 2000.0,
+                        reserve_fraction: float = 0.25, policy_limit_m: float = 4000.0,
                         mean_gradient: float = 0.0) -> dict:
     """Maximum distance from which the astronaut can still walk home.
 
     Consumables are reduced by a reserve, converted to walk time at the
     (uphill-aware) metabolic rate and capped by the operational policy limit
-    (1-2 km on foot)."""
-    policy_limit_m = max(1000.0, min(2000.0, policy_limit_m))
+    (1–4 km on foot)."""
+    policy_limit_m = max(1000.0, min(4000.0, policy_limit_m))
     met = metabolic_power_w(mean_gradient, speed_mps, total_mass_kg)
     rates = plss_rates(met)
     left = consumables.hours_left(rates)

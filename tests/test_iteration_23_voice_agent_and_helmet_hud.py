@@ -16,7 +16,8 @@ def test_voice_copilot_agent_and_gemini_integration(client):
 def test_screen_hud_layer_helmet_visor_and_3_indicators():
     h = read("hud/index.html")
     assert 'class="visor-mask"' in h
-    for t in ("1. OBJETIVO / META", "2. RELIEVE LOCAL (R=180M)", "3. NORTE MARCIANO"):
+    assert 'aria-label="Objetivo"' not in h
+    for t in ("2. RELIEVE LOCAL (R=180M)", "3. NORTE MARCIANO"):
         assert t in h
 
 

@@ -98,7 +98,7 @@ export function render() {
     const status = t.status === "infeasible" ? `<span style="color:var(--danger)">Inviable</span>`
       : v ? `${fmt.m(v.metrics.distance_m)} · ${fmt.dur(v.metrics.duration_s)}${t.saved ? " · guardada" : ""}` : t.result?.static_origin ? fmt.m(t.result.direct.distance_m) : "Sin calcular";
     return `<article class="trav ${t.id === s.activeTraverse ? "active" : ""}" data-tid="${t.id}" tabindex="0" aria-current="${t.id === s.activeTraverse}">
-      <div class="trav-head"><span class="dot"></span><span class="trav-name" title="Doble clic para renombrar">${esc(t.name)}</span>
+      <div class="trav-head"><span class="dot"></span><span class="trav-name" title="Doble clic para renombrar"><span data-no-localize>${esc(t.name)}</span></span>
         <button class="btn btn-icon" data-act="rename" aria-label="Renombrar ${esc(t.name)}">${icon("edit")}</button>
         <button class="btn btn-icon" data-act="eye" aria-pressed="${t.visible !== false}" aria-label="Mostrar u ocultar ${esc(t.name)}">${icon(t.visible === false ? "eyeoff" : "eye")}</button>
         <button class="btn btn-icon" data-act="delete" aria-label="Eliminar ${esc(t.name)}">${icon("x")}</button></div>

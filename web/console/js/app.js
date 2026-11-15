@@ -5,7 +5,9 @@ import { brandBlock, icon } from "/static/shared/js/icons.js";
 import { entitiesFrom, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
 import { Map2D } from "/static/shared/js/map2d.js";
 import { $, $$, esc, simBanner, toast } from "/static/shared/js/ui.js";
-import { initDecks } from "./decks.js";
+import { initDecks, layerParams } from "./decks.js";
+import { adaptiveLayers, layerViewport, LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
+import { drawLayer } from "/static/shared/js/raster.js";
 import { initMenus } from "./menus.js";
 import { initPlanning } from "./planning.js";
 import { initPopover } from "./popover.js";
@@ -25,7 +27,7 @@ export const ctx = {
 };
 window.qn = ctx; // debugging/verification hook
 
-const defaultParams = () => ({ max_slope_deg: null, walkback_limit_m: 2000, reserve_fraction: null, speed_mps: null,
+const defaultParams = () => ({ max_slope_deg: null, walkback_limit_m: 4000, reserve_fraction: null, speed_mps: null,
   w_hazard: 1.0, w_context: 0.6, tau: 0.5, ltst_h: null, alpha: 0.5, realtime: true });
 
 let sessionSeq = 0;
@@ -63,7 +65,7 @@ async function restore() {
     ctx.sessions = ws.sessions.map((s) => ({
       ...newSession(), ...s, params: { ...defaultParams(), ...(s.params || {}) },
       traverses: (s.traverses || []).map((t) => {
-        const legacy = t.result && !("operational_route" in t.result);
+        const legacy = t.result && !t.result.static_origin && t.result.route_model !== 2;
         return { ...t, params: t.params || { ...s.params },
           ...(legacy ? { result: null, status: "draft", saved: false } : {}) };
       }),
@@ -159,7 +161,7 @@ export async function setView(view, silent = false) {
       if (ctx.sun) ctx.map3d.setSun(ctx.sun.az, ctx.sun.el);
       ctx.map3d.on("hover", (ll) => updateHud(ll));
       ctx.map3d.on("click", (ll, hit, screen) => ctx.emit("mapclick", { ll, hit, screen }));
-      ctx.map3d.on("frame", () => updateScaleBar());
+      ctx.map3d.on("frame", () => { updateScaleBar(); ctx.layerDetail?.update(); });
       // keep 3D centred where the 2D camera was (context preserved)
       const c = ctx.map2d.screenToLL(ctx.map2d.w / 2, ctx.map2d.h / 2);
       ctx.map3d.focusOn(c.lat, c.lon, Math.max(4000, ctx.map2d.metersPerPixel() * 900));
@@ -177,7 +179,6 @@ export async function setView(view, silent = false) {
 
 export function setMode(mode, silent = false) {
   const s = ctx.cur;
-  const previous = document.body.dataset.mode;
   mode = ["general", "analyze", "plan"].includes(mode) ? mode : "general";
   s.mode = mode;
   document.body.dataset.mode = mode;
@@ -187,7 +188,6 @@ export function setMode(mode, silent = false) {
     e.setAttribute("aria-pressed", String(on));
     e.innerHTML = icon(on ? "eye" : "eyeoff");
   });
-  if (mode === "plan" && previous !== "plan") ctx.decks?.legend.open();
   if (mode === "analyze") ctx.decks?.layers.open();
   else ctx.decks?.layers.close();
   if (mode === "general") ctx.decks?.legend.close();
@@ -207,12 +207,12 @@ export function routeOverlays() {
     if (t.visible === false || !t.result) continue;
     const v = t.result.variants.find((x) => x.variant === t.variant) || t.result.variants[0];
     const active = t.id === s.activeTraverse;
-    if (s.showCalc && v) {
+    if ((t.showCalc ?? s.showCalc) && v) {
       out.push({ id: `${t.id}:calc`, points: v.points, color: "#65d8ff", width: active ? 3.5 : 2.5,
         segments: v.pnr?.show_pnr ? v.pnr.segments : null, pnr: v.pnr?.show_pnr ? v.pnr.pnr_point : null });
     }
-    if (t.result.direct && (t.result.static_origin || (s.showDirect && active))) {
-      out.push({ id: `${t.id}:direct`, points: t.result.direct.points, color: "#6fd3ff", width: 1.8, dash: [8, 6] });
+    if (t.result.direct && (t.showDirect ?? (t.result.static_origin || (s.showDirect && active)))) {
+      out.push({ id: `${t.id}:direct`, points: t.result.direct.points, color: "#ebcf7f", width: 1.8, dash: [3, 6] });
     }
   }
   return out;
@@ -227,14 +227,17 @@ export function refreshScene() {
   m.toponyms = ctx.scenario.toponyms || [];
   m.routes = routeOverlays();
   m.layers = Object.entries(s.layers).filter(([, L]) => L.visible && ctx.layerCanvases?.[L.key]).map(([id, L]) => ({
-    id, canvas: ctx.layerCanvases[L.key], opacity: s.eyes.analyze ? L.opacity : 0, visible: s.eyes.analyze, stride: 2,
+    id, canvas: ctx.layerCanvases[L.key], opacity: L.opacity, visible: s.eyes.analyze, stride: LAYER_OVERVIEW_STRIDE,
+    width: ctx.region.grid.cols, height: ctx.region.grid.rows,
+    detail: s.eyes.analyze && ctx.layerDetail?.details.get(id)?.key === L.key ? ctx.layerDetail.details.get(id) : null,
   }));
+  ctx.layerDetail?.update();
   m.selection = ctx.selection || null;
   m.draw();
   if (ctx.map3d && s.view === "3d") {
     ctx.map3d.drape(composite());
     ctx.map3d.setRoutes(m.routes);
-    ctx.map3d.setHazards(m.hazards);
+    ctx.map3d.setHazards(m.hidden.has("hazard") ? [] : m.hazards);
     ctx.map3d.setMarkers(ctx.entities, m.hidden);
   }
   const activeLayer = s.eyes.analyze ? s.activeLayer : null;
@@ -252,7 +255,7 @@ export function composite() {
   cv.width = m.base.width * s; cv.height = m.base.height * s;
   const c = cv.getContext("2d");
   c.drawImage(m.base, 0, 0, cv.width, cv.height);
-  for (const L of m.layers) { if (!L.visible) continue; c.globalAlpha = L.opacity; c.drawImage(L.canvas, 0, 0, cv.width, cv.height); }
+  for (const L of m.layers) if (L.visible) drawLayer(c, L);
   c.globalAlpha = 1;
   return cv;
 }
@@ -354,7 +357,15 @@ async function boot() {
   ctx.catalog = {};
   ctx.map2d = new Map2D($("#map2d"), region);
   ctx.map2d.on("hover", (ll) => updateHud(ll));
-  ctx.map2d.on("camera", () => { updateScaleBar(); updateSector(); });
+  ctx.map2d.on("camera", () => { updateScaleBar(); updateSector(); ctx.layerDetail?.update(); });
+  ctx.layerDetail = adaptiveLayers(() => {
+    const window = ctx.cur ? layerViewport(ctx.map2d, ctx.cur.view === "3d" ? ctx.map3d : null) : null;
+    const layers = ctx.cur?.eyes.analyze
+      ? Object.entries(ctx.cur.layers).filter(([id, layer]) => layer.visible && layer.key && ctx.catalog[id])
+          .map(([id, layer]) => ({ id, key: layer.key, params: layerParams(id) }))
+      : [];
+    return { region: region.key, layers, window };
+  }, refreshScene);
   ctx.map2d.on("click", (ll, hit, screen) => { updateHud(ll); ctx.emit("mapclick", { ll, hit, screen }); });
   if (window.innerWidth <= 600) { $("#traverses").classList.add("collapsed"); }
   const restored = await restore();

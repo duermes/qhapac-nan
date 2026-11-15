@@ -474,7 +474,7 @@ def console_flows(br):
         pg.keyboard.press("Escape")
         pg.wait_for_timeout(200)
         gone = pg.locator(".modal").count() == 0
-        assert_true(labels == ["Files", "Edit", "View", "Layers", "Analysis", "Tools", "Help"] and "Atajos" in t and gone, labels)
+        assert_true(labels == ["Archivo", "Editar", "Ver", "Capas", "Análisis", "Herramientas", "Ayuda"] and "Atajos" in t and gone, labels)
         return {"menus": labels}
     check("Top menus Files/Edit/View/Layers/Analysis/Tools/Help with dialogs", ["FC-016", "REF-018"], menus)
 

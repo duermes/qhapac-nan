@@ -111,3 +111,7 @@
 
 .rover-window > summary { cursor: pointer; display: list-item; list-style-position: inside; }
 .rover-window:not([open]) > summary { border-bottom: 0; }
+
+.rover[data-rover-mode="navigate"] .camera-controls summary { display: none; }
+.rover[data-rover-mode="navigate"] .dpad { display: flex; gap: 6px; padding: 4px; }
+.rover[data-rover-mode="navigate"] .dpad .btn { min-width: 44px; }

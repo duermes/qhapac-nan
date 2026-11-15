@@ -42,7 +42,7 @@
       "max_slope_deg": 20,
       "speed_mps": 2.0,
       "resources": {
-        "battery_wh": 60000
+        "battery_wh": 120000
       }
     },
     {
@@ -54,7 +54,7 @@
       "max_slope_deg": 18,
       "speed_mps": 3.0,
       "resources": {
-        "battery_wh": 8000
+        "battery_wh": 60000
       }
     },
     {
@@ -64,9 +64,9 @@
       "lat": 18.427,
       "lon": 77.442,
       "max_slope_deg": 22,
-      "speed_mps": 0.15,
+      "speed_mps": 1.5,
       "resources": {
-        "battery_wh": 2500
+        "battery_wh": 35000
       }
     },
     {
@@ -338,7 +338,7 @@
     }
   ],
   "eva_policy": {
-    "walkback_limit_m": 2000,
+    "walkback_limit_m": 4000,
     "reserve_fraction": 0.25
   }
 }

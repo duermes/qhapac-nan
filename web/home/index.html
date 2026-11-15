@@ -13,8 +13,10 @@
   <link rel="stylesheet" href="/static/shared/css/product-loading.css" />
   <script src="/static/shared/js/entry-transition.js"></script>
   <script type="module" src="/static/home/js/home.js"></script>
+  <link rel="stylesheet" href="/static/shared/css/guide.css" />
+  <script type="module" src="/static/shared/js/guide.js"></script>
 </head>
-<body class="home-journey" data-stage="0">
+<body data-guide="home" class="home-journey" data-stage="0">
   <a class="skip-link" href="#journey-navigation">Elegir una interfaz</a>
   <header class="journey-header">
     <a class="journey-brand" href="/home" aria-label="Qhapaq Ñan, volver al inicio del recorrido">
@@ -26,6 +28,7 @@
       <button class="waypoint" data-stop="2" aria-label="Ir a Ñawi, guerrero y visor EVA">Ñawi</button>
     </nav>
     <div class="header-actions">
+      <div class="qn-settings-host" data-guide-settings data-no-localize></div>
       <button class="sound-toggle" id="sound-toggle" aria-pressed="true" aria-label="Desactivar efectos de sonido" title="Desactivar efectos de sonido">Sonido: sí</button>
       <button class="mission-info" id="mission-info" aria-label="Acerca de la misión" title="Acerca de la misión">Misión</button>
     </div>

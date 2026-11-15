@@ -313,7 +313,9 @@ def L_costmap(ctx, p):
     cp = CostParams(profile=p.get("profile", "rover"), max_slope_deg=p.get("max_slope_deg"),
                     w_hazard=p.get("hazard_weight", 1.0), hazard_zones=ctx.hazards())
     cm = compute_costmap(ctx.terrain, cp)
-    return np.where(np.isfinite(cm.cost), cm.cost, np.nan)
+    finite = np.isfinite(cm.cost)
+    upper = max(1.0, float(cm.cost[finite].max())) if finite.any() else 1.0
+    return np.where(finite, cm.cost, np.where(ctx.terrain.valid, upper * 1.15, np.nan))
 
 
 def L_hazard_tiers(ctx, p):
@@ -336,7 +338,7 @@ def build_catalog(scenario: dict | None = None) -> dict[str, LayerDef]:
                  "Libre/precaución/alto/prohibido por pendiente y zonas de exclusión del escenario.",
                  colormap="tiers", compute=L_hazard_tiers, range_hint=(0, 3)),
         LayerDef("costmap", "Mapa de coste", "adim.", P.DERIVED_FROM_NASA, "riesgo",
-                 "Coste continuo de navegación; celdas prohibidas sin valor.", colormap="cost", compute=L_costmap),
+                 "Coste continuo de navegación; rojo intenso en zonas prohibidas.", colormap="cost", compute=L_costmap),
         LayerDef("temperature", "Temperatura superficial", "°C", P.MODEL, "ambiente",
                  "Modelo diurno amortiguado por polvo con insolación del terreno.", temporal=True,
                  colormap="thermal", compute=L_temperature),

@@ -1,4 +1,4 @@
-"""Browser checks for ADJ-003. Run against a local server with isolated QN_STATE_DIR."""
+"""Browser checks for operational planning and ADJ-004. Run against a local server with isolated QN_STATE_DIR."""
 from __future__ import annotations
 
 import json
@@ -16,9 +16,19 @@ proof = {}
 
 
 def ready(browser, path, viewport=(1440, 900)):
-    page = browser.new_page(viewport=dict(zip(("width", "height"), viewport)), has_touch=viewport[0] < 700)
+    page = browser.new_page(viewport=dict(zip(("width", "height"), viewport)), has_touch=viewport[0] < 700,
+                            reduced_motion="reduce")
+    page.add_init_script("""(() => {
+      class SpeechMock {
+        start() { window.speechProbe = this; this.onstart?.(); }
+        stop() { this.onend?.(); }
+      }
+      window.SpeechRecognition = SpeechMock;
+    })()""")
     errors = []
     page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda item: errors.append(item.text) if
+            item.type == "error" and "Shader" in item.text else None)
     page.goto(BASE + "/" + path, wait_until="domcontentloaded")
     expect(page.locator("body")).to_have_attribute("data-ready", "1", timeout=60000)
     return page, errors
@@ -31,6 +41,13 @@ def console(browser):
     expect(page.locator("#planning-empty")).to_be_visible()
     expect(page.locator("#origin")).to_be_hidden()
     expect(page.locator("#dock [data-mode]")).to_have_count(3)
+    expect(page.locator("#deck-legend")).to_be_hidden()
+    page.click("#legend-btn")
+    const_eye = page.locator("#deck-legend button[data-kind=rover]")
+    expect(const_eye).to_have_attribute("aria-pressed", "true")
+    const_eye.click()
+    expect(const_eye).to_have_attribute("aria-pressed", "false")
+    const_eye.click()
     page.locator("#deck-legend .deck-close").click()
     page.click("#new-traverse")
     page.locator("#origin").select_option("BASE_ALFA")
@@ -65,6 +82,15 @@ def console(browser):
     row.locator("[data-toggle]").click()
     expect(row.locator("[data-toggle]")).to_have_attribute("aria-pressed", "true", timeout=20000)
     assert page.evaluate("qn.cur.layers.dust.paramsUsed.tau") == 0.83
+    page.wait_for_function("qn.map2d.layers.some(layer => layer.detail?.stride === 1)")
+    grid = page.evaluate("qn.map2d.layers.find(layer => layer.id === 'dust').detail")
+    assert grid["width"] <= 256 and grid["height"] <= 256
+    assert page.evaluate("""async () => {
+      const { renderLayer } = await import('/static/shared/js/raster.js');
+      const grid = { rows: 1, cols: 4, data: new Float32Array([-10, 0, 20, NaN]), min: 0, max: 3 };
+      const pixels = renderLayer(grid, 'tiers', 'hazard', 0, 3).getContext('2d').getImageData(0,0,4,1).data;
+      return [pixels[3], pixels[7], pixels[11], pixels[15]].join() === '255,255,255,0';
+    }""")
     row.locator("summary").click()
     expect(row.locator("#layer-dust-tau")).to_be_hidden()
     expect(row.locator("[data-toggle]")).to_have_attribute("aria-pressed", "true")
@@ -73,30 +99,28 @@ def console(browser):
     page.click("[data-mode=plan]")
     expect(page.locator("#planning")).to_be_visible()
     expect(page.locator("#traverses")).to_be_visible()
-    expect(page.locator("#deck-legend")).to_be_visible()
+    expect(page.locator("#deck-legend")).to_be_hidden()
     assert page.evaluate("qn.map2d.layers.some(layer => layer.id === 'dust' && layer.visible)")
     page.click("[data-eye=analyze]")
     assert page.evaluate("qn.map2d.layers.every(layer => !layer.visible)")
-    page.locator("#deck-legend .deck-close").click()
-
     point = {"lat": 18.439, "lon": 77.469}
     page.evaluate("(p) => qn.map2d.focusOn(p.lat, p.lon, 50)", point)
     page.click("#new-point")
     page.mouse.click(720, 450)
     page.select_option("#ap-kind", "rover")
-    rover_name = f"Rover de prueba ADJ-003 {uuid4().hex[:8]}"
+    rover_name = f"Rover de prueba ADJ-004 {uuid4().hex[:8]}"
     page.fill("#ap-name", rover_name)
     page.get_by_role("button", name="Crear punto", exact=True).click()
     page.wait_for_function("name => qn.entities.some(e => e.name === name)", arg=rover_name)
     rover = page.evaluate("name => qn.entities.find(e => e.name === name)", rover_name)
-    assert rover["virtual"] and rover["resources"]["battery_wh"] == 60000
+    assert rover["virtual"] and rover["resources"]["battery_wh"] == 120000
     page.click("#new-traverse")
     page.locator("#origin").select_option(rover["id"])
     page.locator("#destination").select_option("MET_STATION")
     page.click("#calculate")
     expect(page.locator("#variants")).to_contain_text("Ruta de travesía", timeout=30000)
     nominal = page.evaluate("qn.cur.traverses.at(-1).result.variants[0].pnr")
-    lease = nominal["outbound_total"] + nominal["return_total"] * 0.55 + 15000
+    lease = nominal["outbound_total"] + nominal["return_total"] * 0.55 + 30000
     page.evaluate("(id) => qn.popover.openEntity(qn.entities.find(e => e.id === id))", rover["id"])
     page.locator("#point-popover [data-a=edit]").click()
     page.fill("#mobile-battery_wh", str(round(lease, 3)))
@@ -109,6 +133,17 @@ def console(browser):
     split = page.evaluate("qn.cur.traverses.at(-1).result.variants[0].pnr")
     assert split["status"] == "pnr_exceeded" and split["pnr_point"]["distance_m"] > 0
     page.screenshot(path=str(OUT / "hatun-wasi-pnr.png"))
+    page.click("#view-3d")
+    page.wait_for_function("qn.map3d?.overlay.children.some(obj => obj.userData.route && !obj.isSprite)")
+    assert page.evaluate("""() => {
+      const scene = qn.map3d;
+      const line = scene.overlay.children.find(obj => obj.userData.route && !obj.isSprite);
+      const points = line.geometry.attributes.position;
+      return Array.from({length: points.count}, (_, i) => Math.abs(points.getY(i) -
+        scene.surfaceY(points.getX(i), points.getZ(i)) - .65)).every(error => error < .2);
+    }""")
+    page.screenshot(path=str(OUT / "hatun-wasi-draped.png"))
+    page.click("#view-2d")
     page.click("#mission-params summary")
     page.fill("#p-min_temperature_c", "30")
     page.locator("#p-min_temperature_c").press("Tab")
@@ -123,7 +158,8 @@ def console(browser):
     assert page.request.delete(f"{BASE}/api/assets/{rover['id']}").ok
     proof["Hatun Wasi"] = {"mode_count": 3, "exact_direct_endpoint": True, "zoom_m_per_100px": 30,
                            "layer_model": {"tau": 0.83}, "virtual_rover": True,
-                           "pnr": split["pnr_point"], "temperature_rejection": True}
+                           "pnr": split["pnr_point"], "temperature_rejection": True,
+                           "layer_window": True, "color_extremes": True, "draped_3d": True, "legend_on_demand": True}
     page.close()
 
 
@@ -134,20 +170,34 @@ def chaski(browser):
     page.click("#panels-toggle")
     expect(page.locator(".col-left")).to_be_hidden()
     expect(page.locator(".col-right")).to_be_hidden()
-    base = page.evaluate("() => ({ ...chaski.map2d.cam })")
-    page.click("[data-dir=right]")
-    assert page.evaluate("chaski.map2d.cam.cx") > base["cx"]
-    page.click("[data-dir=center]")
-    assert page.evaluate("() => ({ ...chaski.map2d.cam })") == base
+    expect(page.locator("[data-dir=right]")).to_be_hidden()
+    expect(page.locator("[data-dir=in]")).to_be_visible()
+    zoom = page.evaluate("chaski.map2d.cam.scale")
     page.click("[data-dir=in]")
-    assert page.evaluate("chaski.map2d.cam.scale") > base["scale"]
-    assert page.evaluate("() => [chaski.lat, chaski.lon]") == coordinates
+    assert page.evaluate("chaski.map2d.cam.scale") > zoom
+    page.keyboard.down("w")
+    page.wait_for_function("chaski.simDistance > 1")
+    page.keyboard.up("w")
+    moved = page.evaluate("() => [chaski.lat, chaski.lon]")
+    assert moved != coordinates
+    page.wait_for_function("""() => {
+      const s=chaski, { r,c }=s.map2d.g.toRC(s.lat,s.lon);
+      return Math.abs(s.map2d.cam.cx-c-.5)<1e-8 && Math.abs(s.map2d.cam.cy-r-.5)<1e-8 &&
+        Math.abs(s.map2d.cam.rot + s.heading*Math.PI/180)<1e-8 && s.map2d.beams.length===1 && s.map2d.halos.length===1;
+    }""")
+    page.click("[data-mode=recon]")
+    base = page.evaluate("chaski.map2d.cam.cx")
+    page.click("[data-dir=right]")
+    assert page.evaluate("chaski.map2d.cam.cx") > base
+    page.click("[data-dir=center]")
+    assert abs(page.evaluate("chaski.map2d.cam.cx") - base) < 0.001
+    assert page.evaluate("() => [chaski.lat, chaski.lon]") == moved
     for name in ("Pendiente", "Riesgo"):
         page.click("#map-menu-btn")
         expect(page.locator("#map-layer-label")).to_have_text(name)
     page.click("#voice")
-    page.get_by_role("textbox", name="Orden para Khipu").fill("muestra capa temperatura")
-    page.get_by_role("button", name="Enviar").click()
+    page.evaluate("""() => speechProbe.onresult({ resultIndex: 0, results: [[{ transcript: "muestra capa temperatura" }]] })""")
+    assert page.locator(".voice-form").count() == 0
     expect(page.locator("#map-layer-label")).to_contain_text("Temperatura", timeout=20000)
     page.keyboard.press("Escape")
     page.click("#panels-toggle")
@@ -158,13 +208,16 @@ def chaski(browser):
     page.click("#safe-return")
     expect(page.locator("#inspect-card")).to_contain_text("Ruta a Base Alfa", timeout=30000)
     assert page.evaluate("chaski.route.metrics.resources.battery_wh") > 0
+    page.screenshot(path=str(OUT / "chaski-2d.png"))
     page.click("#view-toggle")
     expect(page.locator("#map3d canvas")).to_be_visible(timeout=30000)
     page.click("[data-dir=center]")
+    page.wait_for_function("chaski.view === '3d' && [...document.querySelectorAll('#map3d .m3d-rover')].some(e => e.textContent === chaski.name && e.style.display !== 'none')")
     page.screenshot(path=str(OUT / "chaski.png"))
     assert not errors, errors
     proof["Chaski"] = {"pan_and_zoom": True, "position_unchanged": True, "hide_panels": True, "layer_cycle": True,
-                       "direct_layer_intent": "temperature", "shared_route": True, "3d": True}
+                       "direct_layer_intent": "temperature", "shared_route": True, "3d": True,
+                       "keyboard_demo": True, "bodyframe": True, "location_and_heading_light": True}
     page.close()
 
 
@@ -172,7 +225,18 @@ def nawi(browser):
     page, errors = ready(browser, "hud")
     expect(page.locator(".vitals")).to_be_visible()
     expect(page.locator(".suit")).to_be_hidden()
+    expect(page.locator(".goal")).to_have_count(0)
+    expect(page.locator("#eva-demo-controls")).to_be_hidden()
+    page.click("#eva-demo-toggle")
+    expect(page.locator("#eva-demo-controls")).to_be_visible()
+    page.click("#eva-demo-toggle")
     assert page.evaluate("nawi.route.metrics.resources.o2_kg") > 0
+    assert page.evaluate("nawi.route.points.length") > 10
+    page.wait_for_function("nawi.scene.world.companions.some(a => a.activity === 'walking' && Math.abs(a.group.position.x - a.ax) > 0.1)")
+    page.click("#voice-btn")
+    page.evaluate("""() => speechProbe.onresult({ resultIndex: 0, results: [[{ transcript: "ruta a base alfa" }]] })""")
+    page.wait_for_function("nawi.targets[nawi.ti]?.kind === 'base' && !nawi.planning")
+    assert page.locator(".voice-form").count() == 0
     page.click("#camera-btn")
     expect(page.locator("body")).to_have_attribute("data-camera", "third")
     expect(page.locator(".vitals")).to_be_hidden()
@@ -211,9 +275,11 @@ def nawi(browser):
     page.get_by_role("button", name="Reparar").click()
     page.wait_for_function("nawi.scene.world.interactiveStations.every(s => !s.fault)")
     expect(page.locator(".suit")).to_contain_text("volvió a estado operativo", timeout=10000)
+    expect(page.locator('[data-code="ACTION"]')).to_have_count(0, timeout=10000)
     assert not errors, errors
     proof["Ñawi"] = {"camera_roundtrip": True, "nominal_suit_hidden": True, "base_with_E": True,
-                    "sample_collected": True, "swept_collision": True, "equipment_repaired": True}
+                    "sample_collected": True, "swept_collision": True, "equipment_repaired": True,
+                    "animated_companions": True, "demo_controls_hidden": True, "voice_target": True, "timed_notice": True}
     page.close()
 
 
@@ -226,6 +292,7 @@ def mobile(browser):
             expect(page.locator(".col-left")).to_be_hidden()
             page.click("#panels-toggle")
             expect(page.locator(".col-left")).to_be_visible()
+            page.click("[data-mode=recon]")
             page.locator(".camera-controls summary").click()
             assert page.locator(".camera-controls").bounding_box()["y"] > (
                 page.locator(".col-left").bounding_box()["y"] + page.locator(".col-left").bounding_box()["height"]

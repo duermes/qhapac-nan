@@ -1,10 +1,13 @@
 // Raster decoding, colormaps, hillshade and contour extraction (canvas, no deps).
 
 export function decodeGrid(g) {
-  if (!g || !g.data) return null;
+  if (!g) return null;
   const bin = atob(g.data);
   const n = g.rows * g.cols;
   const out = new Float32Array(n);
+  const bounds = { min: g.min, max: g.max, stride: g.stride || 1, row: g.row || 0, col: g.col || 0,
+    width: g.width ?? g.cols * (g.stride || 1), height: g.height ?? g.rows * (g.stride || 1) };
+  if (!g.data) { out.fill(NaN); return { data: out, rows: g.rows, cols: g.cols, ...bounds }; }
   const top = g.nodata - 1;
   const span = (g.max - g.min) / top;
   if (g.encoding === "uint16") {
@@ -18,7 +21,7 @@ export function decodeGrid(g) {
       out[i] = q === g.nodata ? NaN : g.min + q * span;
     }
   }
-  return { data: out, rows: g.rows, cols: g.cols, min: g.min, max: g.max, stride: g.stride || 1 };
+  return { data: out, rows: g.rows, cols: g.cols, ...bounds };
 }
 
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -55,11 +58,7 @@ export const COLORMAPS = {
   tiers: (t) => [[63, 191, 127], [232, 200, 61], [232, 130, 40], [224, 50, 50]][Math.round(t * 3)] || [224, 50, 50],
 };
 
-export function layerAlpha(id, v, t) {
-  if (id === "shadow") return v > 0.5 ? 0.55 : 0;
-  if (id === "hazard") return t < 0.1 ? 0 : 0.75;
-  return 1;
-}
+export const isCategoricalLayer = (id) => id === "hazard" || id === "shadow";
 
 export function renderLayer(grid, colormap, id, lo, hi) {
   const cv = document.createElement("canvas");
@@ -73,13 +72,35 @@ export function renderLayer(grid, colormap, id, lo, hi) {
   for (let i = 0; i < grid.data.length; i++) {
     const v = grid.data[i];
     if (!isFinite(v)) { img.data[4 * i + 3] = 0; continue; }
-    const t = (v - a) / span;
+    const t = Math.max(0, Math.min(1, (v - a) / span));
     const [r, g, bl] = cm(t);
     img.data[4 * i] = r; img.data[4 * i + 1] = g; img.data[4 * i + 2] = bl;
-    img.data[4 * i + 3] = 255 * layerAlpha(id, v, t);
+    img.data[4 * i + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
   return cv;
+}
+
+export function drawLayer(ctx, layer) {
+  const { canvas, detail, opacity, id, stride } = layer;
+  const width = layer.width ?? canvas.width * stride;
+  const height = layer.height ?? canvas.height * stride;
+  ctx.save();
+  ctx.imageSmoothingEnabled = !isCategoricalLayer(id);
+  ctx.globalAlpha = opacity;
+  if (detail) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.rect(detail.col, detail.row, detail.width, detail.height);
+    ctx.clip("evenodd");
+    ctx.drawImage(canvas, 0, 0, width, height);
+    ctx.restore();
+    ctx.drawImage(detail.canvas, detail.col, detail.row, detail.width, detail.height);
+  } else {
+    ctx.drawImage(canvas, 0, 0, width, height);
+  }
+  ctx.restore();
 }
 
 /** Hillshaded Martian relief from MOLA (sun from az/el, same as 3D light). */

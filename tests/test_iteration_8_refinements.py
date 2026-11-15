@@ -20,7 +20,8 @@ def test_waypoint_in_situ_editing_and_deletion():
 
 
 def test_legend_visibility_filters():
-    assert "lg-${k}" in read("console/js/decks.js")
+    legend = read("console/js/decks.js").split("function renderLegend()", 1)[1].split("function renderMetrics", 1)[0]
+    assert 'icon(shown ? "eye" : "eyeoff")' in legend and 'type="checkbox"' not in legend
 
 
 def test_planning_toolbar_collapse_and_reopen():

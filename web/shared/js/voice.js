@@ -1,80 +1,81 @@
-// Khipu voice copilot client: Web Speech API when available, typed fallback otherwise.
-// Intent interpretation happens in Khipu (POST /api/voice/command) — no AI provider.
+// Browser speech capture and playback. Intent execution stays in Khipu.
 import { api } from "./api.js";
-import { esc, modal, toast } from "./ui.js";
-import { icon } from "./icons.js";
+import { toast } from "./ui.js";
+import { currentLanguage, translate } from "./language.js";
+
+const speechLocale = () => currentLanguage() === "en" ? "en-US" : "es-PE";
+
+const ERRORS = {
+  "not-allowed": "Autoriza el micrófono para usar Khipu.",
+  "service-not-allowed": "El navegador bloqueó el servicio de reconocimiento.",
+  "audio-capture": "No se encontró un micrófono disponible.",
+  "no-speech": "No se detectó voz. Vuelve a intentarlo.",
+  network: "El servicio de reconocimiento perdió la conexión.",
+};
 
 export class VoiceCopilot {
-  constructor({ iface, onIntent }) {
+  constructor({ iface, onIntent, points = () => [], button = null }) {
     this.iface = iface;
     this.onIntent = onIntent;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    this.speechSupported = !!SR;
-    if (SR) {
-      this.rec = new SR();
-      this.rec.lang = "es-ES";
-      this.rec.interimResults = false;
-      this.rec.maxAlternatives = 1;
-      this.rec.onresult = (e) => this.handle(e.results[0][0].transcript);
-      this.rec.onerror = (e) => { toast(`Micrófono no disponible (${e.error}). Usa la entrada de texto.`, "warn"); };
-    }
+    this.points = points;
+    this.button = button;
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) return;
+    this.rec = new Recognition();
+    this.rec.lang = speechLocale();
+    this.rec.interimResults = false;
+    this.rec.maxAlternatives = 1;
+    this.rec.onstart = () => toast("Khipu está escuchando…", "safe", 2200);
+    this.rec.onresult = (event) => this.handle(event.results[event.resultIndex || 0][0].transcript);
+    this.rec.onend = () => this.setListening(false);
+    this.rec.onerror = (event) => {
+      this.setListening(false);
+      if (event.error !== "aborted") toast(ERRORS[event.error] || "El reconocimiento de voz no está disponible.", "warn", 4400);
+    };
   }
 
-  /** Always opens the copilot console: typed input is the guaranteed fallback,
-   *  dictation is offered when the browser exposes speech recognition. */
+  setListening(active) {
+    this.listening = active;
+    this.button?.setAttribute("aria-pressed", String(active));
+  }
+
   start() {
-    if (this.modal && document.body.contains(this.modal.el)) return;
-    this.openTyped();
-  }
-
-  dictate() {
-    if (!this.rec) return;
-    try { this.rec.start(); toast("Khipu escuchando…", "safe", 2500); } catch { toast("Micrófono ocupado o no disponible", "warn"); }
-  }
-
-  openTyped() {
-    const body = document.createElement("div");
-    body.innerHTML = `<p class="muted" style="margin-top:0">${this.speechSupported ? "" : "Reconocimiento de voz no disponible en este navegador. "}Escribe la orden para Khipu (p. ej. <em>ayuda</em>, <em>muestra capa pendiente</em>, <em>info de delta</em>).</p>
-      <form class="voice-form" style="display:flex;gap:8px"><input class="input" name="cmd" aria-label="Orden para Khipu" autocomplete="off" />
-      ${this.speechSupported ? `<button class="btn" type="button" data-dictate aria-label="Dictar por voz">${icon("mic")}</button>` : ""}
-      <button class="btn btn-gold" type="submit">${icon("radio")} Enviar</button></form>
-      <div class="voice-log" style="margin-top:10px;font-size:12px" aria-live="polite"></div>`;
-    const m = modal({ title: "Khipu — copiloto", body });
-    const log = body.querySelector(".voice-log");
-    this.log = log;
-    body.querySelector("[data-dictate]")?.addEventListener("click", () => this.dictate());
-    body.querySelector("form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = e.target.cmd.value.trim();
-      if (!text) return;
-      e.target.cmd.value = "";
-      await this.handle(text);
-    });
-    this.modal = m;
+    if (!this.rec) { toast("Este navegador no tiene reconocimiento de voz.", "warn"); return; }
+    if (this.listening) { this.rec.stop(); return; }
+    try {
+      window.speechSynthesis?.cancel();
+      this.setListening(true);
+      this.rec.lang = speechLocale();
+      this.rec.start();
+    } catch {
+      this.setListening(false);
+      toast("No se pudo iniciar el micrófono.", "warn");
+    }
   }
 
   async handle(text) {
-    let res;
     try {
-      res = await api.voice(text, this.iface);
-    } catch (e) {
-      res = { intent: "offline", speech: "Khipu no responde. Usa los controles de la interfaz." };
+      const result = await api.voice(text, this.iface, this.points(), currentLanguage());
+      const response = await this.onIntent?.(result);
+      const speech = typeof response === "string" ? response : result.speech;
+      this.speak(speech);
+      if (speech) toast(speech, ["clarify", "unknown", "none"].includes(result.intent) ? "warn" : "", 4500);
+      return result;
+    } catch {
+      const speech = "Khipu no pudo procesar la orden.";
+      this.speak(speech);
+      toast(speech, "warn");
+      return null;
     }
-    this.speak(res.speech);
-    try { this.onIntent?.(res); } catch (err) { console.error(err); }
-    const open = this.modal && document.body.contains(this.modal.el);
-    if (open && this.log) this.log.innerHTML = `<div><span class="dim">Tú:</span> ${esc(text)}</div><div><span style="color:var(--gold)">Khipu:</span> ${esc(res?.speech || "")}</div>` + this.log.innerHTML;
-    else toast(res.speech, res.intent === "clarify" ? "warn" : "");
-    return res;
   }
 
   speak(text) {
     if (!text || !window.speechSynthesis) return;
     try {
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "es-ES";
+      const utterance = new SpeechSynthesisUtterance(translate(text));
+      utterance.lang = speechLocale();
       window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch { /* silent */ }
+      window.speechSynthesis.speak(utterance);
+    } catch { /* visible feedback is already rendered */ }
   }
 }

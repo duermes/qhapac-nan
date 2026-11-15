@@ -6,15 +6,23 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from .geodesy import haversine_m
 from .physics import metabolic as met
 from .physics import terramechanics as tm
 
 ROVER = tm.Rover()
+ROVER_DEMO_CAPACITY_WH = 120_000.0
+EVA_WALKBACK_LIMIT_M = 4_000.0
+
+
+@lru_cache(maxsize=180)
+def rover_slip(slope_deg: int) -> float:
+    return tm.equilibrium_slip(ROVER, slope_deg / 2)
 
 PNR_DEFAULTS = {
-    "rover": {"resource": "battery_wh", "capacity": ROVER.battery_wh, "reserve_fraction": 0.20},
+    "rover": {"resource": "battery_wh", "capacity": ROVER_DEMO_CAPACITY_WH, "reserve_fraction": 0.20},
     "astronaut": {"resource": "o2_kg", "capacity": 1.2, "reserve_fraction": 0.25},
 }
 
@@ -23,7 +31,8 @@ def segment_cost(profile: str, dist_m: float, grade_deg: float, speed_mps: float
     """Resource and time spent on one segment (directional)."""
     if profile == "rover":
         v = speed_mps or 1.0
-        v_eff = v * max(0.35, 1.0 - max(0.0, grade_deg) / 30.0)
+        slip = rover_slip(round(abs(grade_deg) * 2))
+        v_eff = v * max(0.35, 1.0 - max(0.0, grade_deg) / 30.0) * max(0.25, 1.0 - slip)
         e_wh = tm.energy_per_meter_wh(ROVER, grade_deg, v_eff) * dist_m
         return {"time_s": dist_m / v_eff, "battery_wh": max(e_wh, 0.0)}
     v = speed_mps or 0.9

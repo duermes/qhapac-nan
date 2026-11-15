@@ -38,9 +38,10 @@
 .coord-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
 .coord-edit .input { min-height: 24px; padding: 2px 6px; font-size: 11px; }
 .calc { width: 100%; margin-top: 12px; min-height: 36px; }
-.route-toggle { font-size: 11px; padding: 4px 6px; min-height: 28px; white-space: nowrap; gap: 6px; }
+.route-display { flex-wrap: wrap; }
+.route-toggle { font-size: 11px; padding: 4px 6px; min-height: 28px; white-space: nowrap; gap: 6px; flex: 1 1 auto; }
 .route-toggle .sw { display: inline-block; flex: none; align-self: center; width: 12px; height: 2px; }
-.planning .btn-row .btn { font-size: 12px; white-space: nowrap; padding: 6px 6px; gap: 5px; }
+.planning .btn-row .btn:not(.route-toggle) { font-size: 12px; white-space: nowrap; padding: 6px 6px; gap: 5px; }
 .route-toggle .sw.direct { background: var(--route-direct); }
 .route-toggle .sw.calcd { background: var(--route-calc); }
 .route-toggle[aria-pressed="false"] { opacity: .55; }
@@ -184,3 +185,8 @@
 @media (max-width: 600px) { .focus-menu { bottom: 210px; } }
 
 .layer-row .layer-meta { justify-content: space-between; }
+
+.legend-item .btn-icon { flex: 0 0 30px; margin-inline-start: auto; }
+.legend-item .btn-icon[aria-pressed="false"] { color: var(--text-3); }
+.route-toggle .sw.direct { border-color: #ebcf7f; border-top-style: dotted; background: none; }
+.route-toggle .sw.calcd { background: #65d8ff; border-color: #65d8ff; }

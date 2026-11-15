@@ -27,12 +27,58 @@ class Heap {
   }
 }
 
+function smoothLocal(world, nodes) {
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+  const passable = (a, b) => {
+    if (world.pathBlocked(a.x, a.z, b.x, b.z, 0.85)) return false;
+    const steps = Math.max(1, Math.ceil(distance(a, b) / 0.35));
+    let last = world.getSmoothHeightAt(a.x, a.z);
+    for (let i = 1; i <= steps; i++) {
+      const p = lerp(a, b, i / steps);
+      const height = world.getSmoothHeightAt(p.x, p.z);
+      if (Math.abs(height - last) > Math.tan(24 * Math.PI / 180) * distance(a, b) / steps + 0.0001) return false;
+      last = height;
+    }
+    return true;
+  };
+
+  const path = [nodes[0]];
+  // Round each corner locally; fall back to the verified corner when clearance is tight.
+  for (let i = 1; i + 1 < nodes.length; i++) {
+    const a = nodes[i - 1], b = nodes[i], c = nodes[i + 1];
+    const entry = lerp(b, a, 0.3), exit = lerp(b, c, 0.3);
+    const curved = [entry];
+    for (let j = 1; j <= 3; j++) {
+      const t = j / 3;
+      curved.push(lerp(lerp(entry, b, t), lerp(b, exit, t), t));
+    }
+    const nominal = [path.at(-1), ...curved, c];
+    if (nominal.slice(1).every((point, j) => passable(nominal[j], point))) path.push(...curved);
+    else path.push(b);
+  }
+  path.push(nodes.at(-1));
+  const dense = [path[0]];
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const steps = Math.max(1, Math.ceil(distance(a, b) / 0.70));
+    for (let j = 1; j <= steps; j++) dense.push(lerp(a, b, j / steps));
+  }
+  return dense;
+}
+
 export function localRoute(scene, start, target) {
-  const world = scene.world, cell = 2, half = world.gridSize / 2 - 4;
+  const world = scene.world, cell = 1, half = world.gridSize / 2 - 4;
   const size = Math.floor(half * 2 / cell) + 1;
   const decode = id => ({ x: id % size * cell - half, z: Math.floor(id / size) * cell - half });
   const encode = (x, z) => Math.round((z + half) / cell) * size + Math.round((x + half) / cell);
-  const free = (x, z) => Math.abs(x) <= half && Math.abs(z) <= half && !world.pathBlocked(x, z, x, z, 0.9);
+  const clearance = new Int8Array(size * size);
+  const free = (x, z) => {
+    if (Math.abs(x) > half || Math.abs(z) > half) return false;
+    const id = encode(x, z);
+    if (!clearance[id]) clearance[id] = world.pathBlocked(x, z, x, z, 0.9) ? -1 : 1;
+    return clearance[id] > 0;
+  };
   const desired = target.kind === "base" ? { x: world.baseCoord.x, z: world.baseCoord.z + 16 } : scene.toLocal(target.lat, target.lon);
   let goal = null, best = Infinity;
   for (let x = desired.x - 10; x <= desired.x + 10; x += cell) {
@@ -90,5 +136,7 @@ export function localRoute(scene, start, target) {
   for (let id = goalId; id !== -1; id = parents[id]) nodes.push(decode(id));
   nodes.reverse();
   if (startDistance > 0.001) nodes.unshift({ x: start.x, z: start.z });
-  return nodes.map(p => ({ ...scene.toLatLon(p.x, p.z), elevation_m: scene.surfaceElevation(p.x, p.z) }));
+  return (nodes.length > 2 ? smoothLocal(world, nodes) : nodes).map(p => ({
+    ...scene.toLatLon(p.x, p.z), elevation_m: scene.surfaceElevation(p.x, p.z),
+  }));
 }

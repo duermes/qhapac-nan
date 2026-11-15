@@ -54,4 +54,4 @@ def test_add_point_modal_and_popover_user_controls():
 
 def test_scale_bar_updating_in_3d_mode():
     a = read("console/js/app.js")
-    assert 'ctx.map3d.on("frame", () => updateScaleBar())' in a and "ctx.map3d.metersPerPixel()" in a
+    assert 'ctx.map3d.on("frame", () => { updateScaleBar();' in a and "ctx.map3d.metersPerPixel()" in a

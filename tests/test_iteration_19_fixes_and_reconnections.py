@@ -12,7 +12,7 @@ def test_quick_nav_instant_relocation_no_permanent_state():
 
 def test_dynamic_location_hud_over_map():
     a = read("console/js/app.js")
-    assert "export function updateSector" in a and 'ctx.map2d.on("camera", () => { updateScaleBar(); updateSector(); })' in a
+    assert "export function updateSector" in a and 'ctx.map2d.on("camera", () => { updateScaleBar(); updateSector();' in a
 
 
 def test_no_dashed_perimeter_lines():

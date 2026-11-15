@@ -9,8 +9,10 @@
   <link rel="stylesheet" href="/static/shared/css/qn.css" />
   <link rel="stylesheet" href="/static/hud/css/hud.css" />
   <script type="importmap">{ "imports": { "three": "/static/vendor/three/three.module.js", "three/addons/": "/static/vendor/three/addons/" } }</script>
+  <link rel="stylesheet" href="/static/shared/css/guide.css" />
+  <script type="module" src="/static/shared/js/guide.js"></script>
 </head>
-<body class="hud" data-camera="first">
+<body data-guide="hud" class="hud" data-camera="first">
   <div id="scene" class="scene" aria-label="Escena 3D EVA"></div>
   <div class="visor-mask" aria-hidden="true"></div>
 
@@ -27,6 +29,7 @@
     <div class="v" id="v-smp"><span>MUESTRAS:</span><b class="mono" id="samples">0/16</b></div>
   </div>
   <div class="tr-btns">
+      <div class="qn-settings-host" data-guide-settings data-no-localize></div>
     <button id="camera-btn" class="hbtn" title="Vista externa. Pulsa C o toca la escena para volver"><span data-icon="camera"></span>Cámara</button>
     <button id="help-btn" class="hbtn" aria-expanded="false"><span data-icon="help"></span>Ayuda</button>
   </div>
@@ -34,16 +37,6 @@
   <!-- critical alert (prioritised, never over the reticle) -->
   <div id="critical" class="critical" role="alert" hidden></div>
 
-  <!-- left: goal + stamina -->
-  <section class="hcard goal" aria-label="Objetivo">
-    <div class="hcard-title"><i class="dot blue"></i>1. OBJETIVO / META</div>
-    <div class="goal-dist mono" id="goal-dist">—</div>
-    <div class="goal-name" id="goal-name">Sin objetivo</div>
-    <div class="mono small">Rumbo: <b id="goal-brg">—</b> &nbsp; ETA: <b id="goal-eta">—</b></div>
-    <div class="mono small">ΔZ: <b id="goal-dz">—</b> <span id="goal-safe" class="ok"></span></div>
-    <div id="goal-pnr" class="small mono" hidden></div>
-    <div class="goal-actions"><button class="hbtn sm" id="goal-prev" aria-label="Objetivo anterior">◂</button><button class="hbtn sm" id="goal-next" aria-label="Siguiente objetivo">▸</button><button class="hbtn sm" id="goal-route">Ruta Khipu</button></div>
-  </section>
   <section class="hcard stamina" aria-label="Esfuerzo y estamina">
     <div class="hcard-title"><span data-icon="sliders"></span>ESFUERZO Y ESTAMINA <b class="mono" id="stamina-pct">—</b></div>
     <div class="st-bar"><i id="stamina-bar"></i></div>
@@ -84,8 +77,8 @@
   </section>
   <div class="loc mono" id="loc"><div class="small">LOCALIZACIÓN ASTRONAUTA:</div><div id="loc-ll">—</div><div class="small" id="loc-elev">—</div></div>
 
-  <!-- on-screen EVA controls (gloves / touch) -->
-  <div class="eva-controls" aria-label="Controles EVA">
+  <button id="eva-demo-toggle" class="hbtn" aria-controls="eva-demo-controls" aria-expanded="false">Demo</button>
+  <div id="eva-demo-controls" class="eva-controls" aria-label="Controles de demostración EVA" hidden>
     <button class="hbtn pad" data-move="fwd" aria-label="Avanzar">▲</button>
     <button class="hbtn pad" data-move="left" aria-label="Girar izquierda">◀</button>
     <button class="hbtn pad" data-move="back" aria-label="Retroceder">▼</button>

@@ -54,7 +54,7 @@ def test_waypoint_read_only_card_with_in_situ_edit():
 
 
 def test_3d_route_elevation_offset_and_contour_shader_color():
-    assert "const lift = 25 * this.opts.exaggeration" in M3 and "uContourColor" in M3
+    assert "drapedEdge" in M3 and "surfaceY" in M3 and "uContourColor" in M3
 
 
 @needs_mola

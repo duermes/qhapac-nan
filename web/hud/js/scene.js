@@ -105,7 +105,7 @@ export class EvaScene {
     const entries = this.world.pois.map((p, i) => ({
       id: i === 0 ? "BASE_ALFA" : `EVA_POI_${i}`,
       name: p.name, description: p.description, kind: i === 0 ? "base" : p.tag === "COMMS" ? "antenna" : kinds[p.type] === "base" ? "landmark" : kinds[p.type] || "landmark",
-      ...this.toLatLon(p.x, p.z), x: p.x, z: p.z, provenance: "synthetic"
+      ...this.toLatLon(p.x, p.z), x: p.x, z: p.z, provenance: "synthetic", actor: p.actor, activity: p.actor?.activity
     }));
     for (const s of this.world.collectibleSamples) entries.push({ id: s.id, kind: "sample", name: s.name, description: s.yield, ...this.toLatLon(s.x, s.z), x: s.x, z: s.z, provenance: "synthetic" });
     return entries;
@@ -131,10 +131,10 @@ export class EvaScene {
     const expanded = [];
     for (let i = 1; i < points.length; i++) {
       const a = this.toLocal(points[i - 1].lat, points[i - 1].lon), b = this.toLocal(points[i].lat, points[i].lon);
-      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 2));
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.35));
       for (let j = i === 1 ? 0 : 1; j <= steps; j++) {
         const x = a.x + (b.x - a.x) * j / steps, z = a.z + (b.z - a.z) * j / steps;
-        expanded.push({ point: new THREE.Vector3(x, this.groundY(x, z) + 0.35, z), segment: i - 1 });
+        expanded.push({ point: new THREE.Vector3(x, this.groundY(x, z) + 0.1, z), segment: i - 1 });
       }
     }
     for (const state of ["safe", "caution", "no_return"]) {
@@ -203,11 +203,17 @@ export class EvaScene {
     this.character.updatePosition(x, z);
     this.updateCamera(dt);
     this.world.updateDust(dt);
+    this.world.updateCompanions(dt);
     const inside = this.character.isInsideBase;
     this.scene.fog = inside ? null : this.scene.fog || new THREE.Fog(0xc4875a, 180, 2200);
     this.renderer.render(this.scene, this.camera);
     const w = this.el.clientWidth, h = this.el.clientHeight;
     for (const m of this.markers) {
+      if (m.e.actor) {
+        const { x, y, z } = m.e.actor.group.position;
+        Object.assign(m.e, { x, z, ...this.toLatLon(x, z) });
+        m.pos.set(x, y + 2.7, z);
+      }
       const v = m.pos.clone().project(this.camera);
       const dist = m.pos.distanceTo(this.character.position);
       const visible = this.character.isFirstPerson && !inside && !m.hidden && !m.collected && v.z > -1 && v.z < 1 && Math.abs(v.x) < 0.94 && Math.abs(v.y) < 0.9 && dist < 1800;

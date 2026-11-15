@@ -183,7 +183,7 @@ const MOBILE_FIELDS = {
   astronaut: [["o2_kg", "Oxígeno (kg)", 1.2, 1.2], ["water_kg", "Agua (kg)", 3.6, 3.6],
     ["battery_wh", "Batería del traje (Wh)", 1100, 1100], ["speed_mps", "Velocidad (m/s)", 0.9, 5],
     ["max_slope_deg", "Pendiente máxima (°)", 25, 30]],
-  rover: [["battery_wh", "Batería (Wh)", 60000, 60000], ["speed_mps", "Velocidad (m/s)", 2, 5],
+  rover: [["battery_wh", "Batería (Wh)", 120000, 120000], ["speed_mps", "Velocidad (m/s)", 2, 5],
     ["max_slope_deg", "Pendiente máxima (°)", 20, 30]],
 };
 

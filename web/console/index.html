@@ -9,8 +9,10 @@
   <link rel="stylesheet" href="/static/shared/css/qn.css" />
   <link rel="stylesheet" href="/static/console/css/console.css" />
   <script type="importmap">{ "imports": { "three": "/static/vendor/three/three.module.js", "three/addons/": "/static/vendor/three/addons/" } }</script>
+  <link rel="stylesheet" href="/static/shared/css/guide.css" />
+  <script type="module" src="/static/shared/js/guide.js"></script>
 </head>
-<body class="console">
+<body data-guide="console" class="console">
   <main id="stage" class="stage" aria-label="Mapa de misión">
     <canvas id="map2d" class="map2d" aria-label="Mapa 2D del terreno" tabindex="0"></canvas>
     <div id="map3d" class="map3d" hidden aria-label="Vista 3D del terreno"></div>
@@ -36,6 +38,7 @@
   <!-- top-right: view switch, focused sector, active layer -->
   <div class="tr">
     <div class="view-switch panel" role="group" aria-label="Modo de vista">
+      <div class="qn-settings-host" data-guide-settings data-no-localize></div>
       <button id="view-2d" class="btn" aria-pressed="true"><span data-icon="map"></span>2D</button>
       <button id="view-3d" class="btn" aria-pressed="false"><span data-icon="cube"></span>3D</button>
     </div>
@@ -63,7 +66,7 @@
       <hr class="joint" />
       <div class="route-display btn-row" role="group" aria-label="Visualización de rutas">
         <button id="show-direct" class="btn route-toggle" aria-pressed="false"><i class="sw direct"></i>Distancia directa</button>
-        <button id="show-calculated" class="btn route-toggle" aria-pressed="true"><i class="sw calcd"></i>Ruta calculada</button>
+        <button id="show-calculated" class="btn route-toggle" aria-pressed="true"><i class="sw calcd"></i>Recorrido viable</button>
       </div>
       <hr class="joint" />
       <div class="btn-row">
@@ -119,6 +122,7 @@
     <div class="quick panel" id="quick-dock">
       <button id="new-point" class="btn" aria-pressed="false"><span data-icon="pin"></span>Nuevo punto</button>
       <button id="focus-btn" class="btn" aria-haspopup="menu" aria-expanded="false"><span data-icon="focus"></span>Enfocar</button>
+      <button id="console-voice" class="btn btn-icon" aria-label="Hablar con Khipu" title="Hablar con Khipu (K)" aria-pressed="false"><span data-icon="mic"></span></button>
       <button id="legend-btn" class="btn"><span data-icon="book"></span>Leyenda</button>
     </div>
     <div class="coords panel mono" id="coord-hud" aria-live="off">

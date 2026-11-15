@@ -21,8 +21,9 @@ const SHORTCUTS = [
 
 export function initMenus(c) {
   ctx = c;
-  const voice = new VoiceCopilot({ iface: "console", onIntent: handleIntent });
+  const voice = new VoiceCopilot({ iface: "console", onIntent: handleIntent, button: $("#console-voice") });
   ctx.voice = voice;
+  $("#console-voice").addEventListener("click", () => voice.start());
   const M = {
     Files: [["Nueva travesía", () => { setMode("plan"); addTraverse(); }], ["Importar ruta GeoJSON…", () => $("#import-file").click()],
       ["Guardar proyecto", () => { persist(); toast("Proyecto guardado", "safe"); }, "Ctrl+S"],
@@ -49,7 +50,7 @@ export function initMenus(c) {
     Tools: [["Khipu voz", () => voice.start(), "K"], ["Demo y contingencias (simulación)…", demoDialog], ["Redundancia de nodos…", swarmDialog], ["Datos NASA (clima / APOD)…", nasaDialog]],
     Help: [["Atajos de teclado", shortcutsDialog, "?"], ["Procedencia de datos", provenanceDialog], ["Acerca de Qhapaq Ñan", aboutDialog]],
   };
-  const LABEL = { Files: "Files", Edit: "Edit", View: "View", Layers: "Layers", Analysis: "Analysis", Tools: "Tools", Help: "Help" };
+  const LABEL = { Files: "Archivo", Edit: "Editar", View: "Ver", Layers: "Capas", Analysis: "Análisis", Tools: "Herramientas", Help: "Ayuda" };
   const bar = $("#menubar");
   bar.innerHTML = Object.entries(M).map(([k, items]) => `<div class="menu"><button aria-haspopup="true" aria-expanded="false" data-menu="${k}">${LABEL[k]}</button>
     <div class="menu-list panel" role="menu" hidden>${items.map(([l, , kbd], i) => `<button role="menuitem" data-item="${k}:${i}"><span>${esc(l)}</span>${kbd ? `<kbd>${kbd}</kbd>` : ""}</button>`).join("")}</div></div>`).join("");
@@ -171,7 +172,7 @@ function initShortcuts(toggleMenubar) {
 function handleIntent(r) {
   if (r.intent === "select_layer") { setMode("analyze"); setLayer(r.layer_id, true); }
   if (r.intent === "set_mode") setMode({ navigate: "general", recon: "analyze", plan: "plan" }[r.mode] || "plan");
-  if (r.intent === "poi_info") { const e = ctx.entities.find((x) => x.id === r.poi_id); if (e) { ctx.map2d.focusOn(e.lat, e.lon); ctx.popover.openEntity(e); } }
+  if (["poi_info", "plan_target"].includes(r.intent)) { const e = ctx.entities.find((x) => x.id === r.poi_id); if (e) { ctx.map2d.focusOn(e.lat, e.lon); ctx.popover.openEntity(e); } }
   if (r.intent === "filter_pois") {
     const kinds = { science: ["poi"], sample: ["sample"], vehicle: ["rover"], base: ["base", "habitat", "landmark"], hazard: ["hazard"] }[r.category];
     const all = [...new Set(ctx.entities.map((e) => e.kind))];

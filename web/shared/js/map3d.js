@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
 import { ASSET_REGISTRY } from "./icons.js";
+import { destination } from "./geo.js";
 
 export class Map3D {
   constructor(container, region, opts = {}) {
@@ -17,7 +18,7 @@ export class Map3D {
     this.scene.background = new THREE.Color(0x0b100d);
     const w = container.clientWidth || 800, h = container.clientHeight || 600;
     this.camera = new THREE.PerspectiveCamera(50, w / h, 10, 4e6);
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.renderer.setSize(w, h);
     container.appendChild(this.renderer.domElement);
@@ -51,7 +52,8 @@ export class Map3D {
 
   buildTerrain() {
     const e = this.region.elev, s = this.opts.segStride;
-    const cols = Math.floor((e.cols - 1) / s) + 1, rows = Math.floor((e.rows - 1) / s) + 1;
+    const cols = Math.max(2, Math.ceil(e.cols / s) + 1), rows = Math.max(2, Math.ceil(e.rows / s) + 1);
+    this.meshGrid = { cols, rows };
     const W = this.g.widthM(), H = this.g.heightM();
     // horizontal projection: isotropic metres (east-west scaled by cos(lat) of the region centre)
     const geo = new THREE.PlaneGeometry(W, H, cols - 1, rows - 1);
@@ -60,8 +62,10 @@ export class Map3D {
     this.zBase = this.region.stats.mean;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        const v = e.data[(r * s) * e.cols + c * s];
-        pos.setY(r * cols + c, (isFinite(v) ? v - this.zBase : 0) * this.opts.exaggeration);
+        const { lat, lon } = this.g.fromXZ(pos.getX(r * cols + c), pos.getZ(r * cols + c));
+        const value = this.region.elevationAt(Math.min(this.g.lat_max, Math.max(this.g.lat_min, lat)),
+          Math.min(this.g.lon_max, Math.max(this.g.lon_min, lon)));
+        pos.setY(r * cols + c, Number.isFinite(value) ? (value - this.zBase) * this.opts.exaggeration : 0);
       }
     }
     geo.computeVertexNormals();
@@ -103,14 +107,49 @@ export class Map3D {
     this.texture.needsUpdate = true;
   }
 
+  meshCoordinates(x, z) {
+    const { cols, rows } = this.meshGrid;
+    return { u: THREE.MathUtils.clamp(x / this.g.widthM() + 0.5, 0, 1) * (cols - 1),
+      v: THREE.MathUtils.clamp(z / this.g.heightM() + 0.5, 0, 1) * (rows - 1) };
+  }
+
+  surfaceY(x, z) {
+    const { u, v } = this.meshCoordinates(x, z);
+    const { cols, rows } = this.meshGrid;
+    const c = Math.min(cols - 2, Math.floor(u)), r = Math.min(rows - 2, Math.floor(v));
+    const f = u - c, g = v - r;
+    const pos = this.mesh.geometry.attributes.position;
+    const a = pos.getY(r * cols + c), b = pos.getY(r * cols + c + 1);
+    const d = pos.getY((r + 1) * cols + c), e = pos.getY((r + 1) * cols + c + 1);
+    return f + g <= 1 ? a + (b - a) * f + (d - a) * g : e + (d - e) * (1 - f) + (b - e) * (1 - g);
+  }
+
   heightAt(lat, lon) {
-    const e = this.region.elevationAt(lat, lon);
-    return e == null ? 0 : (e - this.zBase) * this.opts.exaggeration;
+    const { x, z } = this.g.toXZ(lat, lon);
+    return this.surfaceY(x, z);
   }
 
   toWorld(lat, lon, lift = 0) {
     const { x, z } = this.g.toXZ(lat, lon);
-    return new THREE.Vector3(x, this.heightAt(lat, lon) + lift, z);
+    return new THREE.Vector3(x, this.surfaceY(x, z) + lift, z);
+  }
+
+  // Split at the mesh edges and diagonals so each line lies on one triangle.
+  drapedEdge(a, b, lift = 0.65) {
+    const start = this.meshCoordinates(a.x, a.z), end = this.meshCoordinates(b.x, b.z);
+    const breaks = [0, 1];
+    const add = (from, to) => {
+      for (let at = Math.floor(Math.min(from, to)) + 1; at < Math.max(from, to); at++) {
+        breaks.push((at - from) / (to - from));
+      }
+    };
+    add(start.u, end.u);
+    add(start.v, end.v);
+    add(start.u + start.v, end.u + end.v);
+    return [...new Set(breaks)].sort((p, q) => p - q).map((t) => {
+      const x = THREE.MathUtils.lerp(a.x, b.x, t), z = THREE.MathUtils.lerp(a.z, b.z, t);
+      return new THREE.Vector3(x, this.surfaceY(x, z) + lift, z);
+    });
   }
 
   setSun(azDeg, elDeg) {
@@ -147,9 +186,8 @@ export class Map3D {
     const colors = { safe: 0x65d8ff, caution: 0x65d8ff, no_return: 0xff8c36 };
     for (const route of routes) {
       if (route.visible === false || route.points?.length < 2) continue;
-      const lift = 25 * this.opts.exaggeration;
-      const points = route.points.map((p) => this.toWorld(p.lat, p.lon, lift));
-      const material = { depthTest: false, color: route.color || "#65d8ff" };
+      const points = route.points.map((p) => this.toWorld(p.lat, p.lon));
+      const material = { depthTest: true, depthWrite: false, color: route.color || "#65d8ff" };
       const tag = (obj) => {
         obj.renderOrder = 10;
         obj.userData.route = route.id || true;
@@ -161,18 +199,20 @@ export class Map3D {
           if (!points[from] || !points[to]) continue;
           const color = colors[state] || material.color;
           if (!runs.has(color)) runs.set(color, []);
-          runs.get(color).push(points[from], points[to]);
+          const edge = this.drapedEdge(points[from], points[to]);
+          for (let i = 1; i < edge.length; i++) runs.get(color).push(edge[i - 1], edge[i]);
         }
         for (const [color, segments] of runs) {
           tag(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(segments),
             new THREE.LineBasicMaterial({ ...material, color })));
         }
       } else {
-        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        const vertices = points.slice(1).flatMap((point, i) => this.drapedEdge(points[i], point).slice(i > 0 ? 1 : 0));
+        const geo = new THREE.BufferGeometry().setFromPoints(vertices);
         const line = new THREE.Line(geo, route.dash ? new THREE.LineDashedMaterial({
           ...material, dashSize: 90, gapSize: 60,
         }) : new THREE.LineBasicMaterial(material));
-        if (route.dash) line.computeLineDistances();
+        if (route.dash) { line.computeLineDistances(); line.userData.dash = route.dash; }
         tag(line);
       }
       if (route.pnr) {
@@ -186,7 +226,7 @@ export class Map3D {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
           map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false, sizeAttenuation: false,
         }));
-        sprite.position.copy(this.toWorld(route.pnr.lat, route.pnr.lon, lift));
+        sprite.position.copy(this.toWorld(route.pnr.lat, route.pnr.lon, 0.7));
         sprite.center.set(0.12, 0.5); sprite.scale.set(0.048, 0.018, 1);
         tag(sprite);
       }
@@ -212,17 +252,78 @@ export class Map3D {
     }
   }
 
+  setRoverLight(halo, beam) {
+    for (const object of this.overlay.children.filter((item) => item.userData.roverLight)) {
+      this.overlay.remove(object);
+      object.geometry.dispose();
+      object.material.dispose();
+    }
+    const add = (source, range, heading, spread, color, alpha) => {
+      const points = [], opacity = [];
+      const start = this.toWorld(source.lat, source.lon, 0.8);
+      const steps = Math.ceil(spread / 6);
+      for (let ring = 0; ring < 4; ring++) {
+        const distance = range * ring / 4;
+        for (let i = 0; i < steps; i++) {
+          const a = heading - spread / 2 + spread * i / steps;
+          const b = heading - spread / 2 + spread * (i + 1) / steps;
+          const vertex = (azimuth, length) => {
+            const { lat, lon } = destination(source.lat, source.lon, azimuth, length);
+            return this.toWorld(lat, lon, 0.8);
+          };
+          const av = ring ? vertex(a, distance) : start, bv = ring ? vertex(b, distance) : start;
+          const cv = vertex(a, distance + range / 4), dv = vertex(b, distance + range / 4);
+          points.push(av, cv, bv, bv, cv, dv);
+          const inside = alpha * (1 - ring / 4), outside = alpha * (1 - (ring + 1) / 4);
+          opacity.push(inside, outside, inside, inside, outside, outside);
+        }
+      }
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      geometry.setAttribute("alpha", new THREE.Float32BufferAttribute(opacity, 1));
+      const material = new THREE.ShaderMaterial({
+        uniforms: { lightColor: { value: new THREE.Color(color) } }, transparent: true, side: THREE.DoubleSide, depthWrite: false,
+        vertexShader: `
+          #include <common>
+          #include <logdepthbuf_pars_vertex>
+          attribute float alpha;
+          varying float strength;
+          void main() {
+            strength = alpha;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            #include <logdepthbuf_vertex>
+          }
+        `,
+        fragmentShader: `
+          #include <logdepthbuf_pars_fragment>
+          uniform vec3 lightColor;
+          varying float strength;
+          void main() {
+            #include <logdepthbuf_fragment>
+            gl_FragColor = vec4(lightColor, strength);
+          }
+        `,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.userData.roverLight = true;
+      mesh.renderOrder = 8;
+      this.overlay.add(mesh);
+    };
+    const mpp = Math.max(0.1, this.metersPerPixel());
+    if (halo) add(halo, Math.max(halo.radius_m, mpp * 10), 0, 360, 0x64edd3, 0.52);
+    if (beam) add(beam, Math.max(beam.length_m, mpp * 24), beam.heading, beam.halfAngle * 2, 0xffda83, 0.42);
+  }
+
   setMarkers(entities, hidden = new Set()) {
     this.labelLayer.innerHTML = "";
     this.markers = entities.filter((e) => !hidden.has(e.kind)).map((e) => {
       const reg = ASSET_REGISTRY[e.kind] || ASSET_REGISTRY.waypoint;
       const el = document.createElement("div");
       el.className = `m3d m3d-${e.kind}`;
-      el.style.cssText = `position:absolute;transform:translate(-50%,-100%);font:500 11px 'Chakra Petch';color:#f3ebdc;white-space:nowrap;text-align:center`;
-      el.innerHTML = `<div class="m3d-label" style="background:rgba(16,22,18,.82);border:1px solid rgba(223,189,128,.25);padding:2px 6px"></div><div style="width:9px;height:9px;margin:2px auto 0;border:2px solid ${reg.color};border-radius:${["poi", "sample", "rover", "astronaut", "antenna"].includes(e.kind) ? "50%" : "0"};background:#0b100d"></div>`;
+      el.style.cssText = `position:absolute;transform:translate(-50%,calc(-100% + 4px));font:500 11px 'Chakra Petch';color:#f3ebdc;white-space:nowrap;text-align:center`;
+      el.innerHTML = `<div class="m3d-label" data-no-localize style="background:rgba(16,22,18,.82);border:1px solid rgba(223,189,128,.25);padding:2px 6px"></div><div style="width:9px;height:9px;margin:2px auto 0;border:2px solid ${reg.color};border-radius:${["poi", "sample", "rover", "astronaut", "antenna"].includes(e.kind) ? "50%" : "0"};background:#0b100d"></div>`;
       el.querySelector(".m3d-label").textContent = e.name;
       this.labelLayer.appendChild(el);
-      return { e, el, rank: e.kind === "base" ? 0 : ["poi", "rover"].includes(e.kind) ? 1 : 2 };
+      return { e, el, rank: e.primary ? -1 : e.kind === "base" ? 0 : ["poi", "rover"].includes(e.kind) ? 1 : 2 };
     });
   }
 
@@ -246,13 +347,20 @@ export class Map3D {
     const iv = dist > 150000 ? 250 : dist > 50000 ? 100 : dist > 15000 ? 50 : 25;
     this.uniforms.uContourInterval.value = iv;
     this.uniforms.uContourWidth.value = 1.0;
+    for (const object of this.overlay.children) {
+      if (!object.userData.dash) continue;
+      const [dash, gap] = object.userData.dash;
+      const resolution = this.metersPerPixel();
+      object.material.dashSize = dash * resolution;
+      object.material.gapSize = gap * resolution;
+    }
     this.renderer.render(this.scene, this.camera);
     const lod = this.labelLOD(dist), mag = this.magnification(dist);
     const w = this.el.clientWidth, h = this.el.clientHeight;
     const placed = [];
     const order = [...this.markers].sort((a, b) => a.rank - b.rank);
     for (const m of order) {
-      const v = this.toWorld(m.e.lat, m.e.lon, 30).project(this.camera);
+      const v = this.toWorld(m.e.lat, m.e.lon).project(this.camera);
       let vis = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && m.rank <= lod;
       const x = (v.x + 1) / 2 * w, y = (1 - v.y) / 2 * h;
       if (vis) {

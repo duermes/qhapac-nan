@@ -252,10 +252,10 @@ def smooth_path(terrain: TerrainContext, costmap: CostmapResult, vertices: list[
     curve = catmull_rom(vertices)
     ok = all(segment_is_valid(terrain, costmap, curve[k], curve[k + 1], max_step_slope_deg)
              for k in range(len(curve) - 1))
-    return curve if ok else densify(vertices)
+    return densify(curve) if ok else densify(vertices)
 
 
-def densify(vertices: list[tuple[float, float]], step_px: float = 0.25) -> list[tuple[float, float]]:
+def densify(vertices: list[tuple[float, float]], step_px: float = 0.125) -> list[tuple[float, float]]:
     if len(vertices) < 2:
         return list(vertices)
     out = [vertices[0]]

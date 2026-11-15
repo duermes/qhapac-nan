@@ -19,8 +19,8 @@ export function initPlanning(c) {
     [`#${role}-lat`, `#${role}-lon`].forEach((sel) => $(sel).addEventListener("change", () => coordEdit(role)));
   });
   $("#calculate").addEventListener("click", calculate);
-  $("#show-direct").addEventListener("click", () => toggleRoute("showDirect", "#show-direct"));
-  $("#show-calculated").addEventListener("click", () => toggleRoute("showCalc", "#show-calculated"));
+  $("#show-direct").addEventListener("click", () => toggleRoute("showDirect"));
+  $("#show-calculated").addEventListener("click", () => toggleRoute("showCalc"));
   $("#save-route").addEventListener("click", saveRoute);
   $("#nearby-pois").addEventListener("click", () => ctx.decks.nearby.openFor(currentVariant()));
   $("#metrics").addEventListener("click", () => ctx.decks.metrics.openFor(activeTraverse()));
@@ -75,7 +75,7 @@ function fillSelects() {
   const group = (list) => {
     const by = {};
     list.forEach((e) => { (by[e.kind] ||= []).push(e); });
-    return Object.entries(by).map(([k, l]) => `<optgroup label="${esc(ASSET_REGISTRY[k]?.label || k)}">${l.map((e) => `<option value="${esc(e.id)}">${esc(optionLabel(e))}</option>`).join("")}</optgroup>`).join("");
+    return Object.entries(by).map(([k, l]) => `<optgroup label="${esc(ASSET_REGISTRY[k]?.label || k)}">${l.map((e) => `<option data-no-localize value="${esc(e.id)}">${esc(optionLabel(e))}</option>`).join("")}</optgroup>`).join("");
   };
   $("#origin").innerHTML = `<option value="">Selecciona el origen</option>${group(ents)}<option value="__custom">Coordenadas personalizadas…</option>`;
   $("#destination").innerHTML = `<option value="">Selecciona el destino</option>${group(ents)}<option value="__custom">Coordenadas personalizadas…</option>`;
@@ -218,11 +218,12 @@ function renderVariants() {
   const el = $("#variants");
   const result = t?.result;
   const measurement = result?.static_origin;
-  for (const id of ["metrics", "nearby-pois", "replan", "show-direct", "show-calculated"]) {
+  for (const id of ["metrics", "nearby-pois", "replan", "show-calculated"]) {
     $(`#${id}`).hidden = !!measurement;
   }
   $("#mission-params").hidden = !!measurement || (!!t?.origin && !isMobile(t.origin));
   $("#save-route").disabled = !result;
+  syncToggles();
   $$("[data-export]").forEach((button) => { button.disabled = !result || !!measurement; });
   if (t?.error) showInfeasible(t.error);
   else $("#route-alert").innerHTML = "";
@@ -242,15 +243,20 @@ function renderVariants() {
     <small class="mono">PNR · ${fmt.lat(pnr.lat)}, ${fmt.lon(pnr.lon)} · ${fmt.m(pnr.distance_m)} desde el origen</small>` : ""}</div>`;
 }
 
-function toggleRoute(key, sel) {
-  ctx.cur[key] = !ctx.cur[key];
+function visible(t, key) {
+  return t?.[key] ?? (key === "showDirect" && t?.result?.static_origin ? true : ctx.cur[key]);
+}
+function toggleRoute(key) {
+  const t = activeTraverse();
+  if (!t) return;
+  t[key] = !visible(t, key);
   syncToggles();
   persist();
   refreshScene();
 }
 function syncToggles() {
-  $("#show-direct").setAttribute("aria-pressed", String(ctx.cur.showDirect));
-  $("#show-calculated").setAttribute("aria-pressed", String(ctx.cur.showCalc));
+  $("#show-direct").setAttribute("aria-pressed", String(visible(activeTraverse(), "showDirect")));
+  $("#show-calculated").setAttribute("aria-pressed", String(visible(activeTraverse(), "showCalc")));
 }
 
 async function saveRoute() {
@@ -356,7 +362,7 @@ async function importRoute(e) {
 // ------------------------------------------------------------------ mission parameters
 const PARAMS = [
   ["max_slope_deg", "Pendiente máxima (°)", 1, 30, 0.1, null],
-  ["walkback_limit_m", "Walkback EVA (m)", 1000, 2000, 1, 2000],
+  ["walkback_limit_m", "Walkback EVA (m)", 1000, 4000, 1, 4000],
   ["reserve_fraction", "Reserva general (fracción)", 0, 0.8, 0.01, 0.25],
   ["reserve_o2_fraction", "Reserva de oxígeno (fracción)", 0, 0.8, 0.01, null],
   ["reserve_water_fraction", "Reserva de agua (fracción)", 0, 0.8, 0.01, null],

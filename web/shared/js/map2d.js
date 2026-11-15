@@ -1,7 +1,7 @@
 // 2D cartographic renderer (Canvas). Shared by Hatun Wasi and Chaski.
 // Camera in full-resolution grid cells: (cx, cy) centre, scale = screen px per cell, rot = radians.
 import { haversine } from "./geo.js";
-import { contourPath, hillshade } from "./raster.js";
+import { contourPath, drawLayer, hillshade } from "./raster.js";
 import { ASSET_REGISTRY, icon } from "./icons.js";
 
 const iconCache = new Map();
@@ -27,6 +27,7 @@ export class Map2D {
     this.entities = [];
     this.hazards = [];
     this.toponyms = [];
+    this.beams = [];
     this.halos = [];            // {lat, lon, radius_m, color}
     this.selection = null;
     this.hidden = new Set();    // legend filters (entity kinds)
@@ -97,7 +98,7 @@ export class Map2D {
   clampCam() {
     const c = this.cam;
     c.scale = Math.min(Math.max(c.scale, this.minScale || 0.1), this.opts.maxScale);
-    if (c.rot) {  // track-up: keep the centre inside the region
+    if (c.rot || this.opts.lockPan) {  // track-up: keep the centre inside the region
       c.cx = Math.min(Math.max(c.cx, 0), this.g.cols);
       c.cy = Math.min(Math.max(c.cy, 0), this.g.rows);
       return;
@@ -124,6 +125,7 @@ export class Map2D {
   screenToLL(x, y) { const { col, row } = this.toGrid(x, y); return this.g.toLL(row - 0.5, col - 0.5); }
 
   zoomAt(factor, sx = this.w / 2, sy = this.h / 2) {
+    if (this.opts.lockPan) { sx = this.w / 2; sy = this.h / 2; }
     const before = this.toGrid(sx, sy);
     this.cam.scale *= factor;
     this.clampCam();
@@ -240,14 +242,13 @@ export class Map2D {
     const o = this.toScreen(0, 0);
     const cs = Math.cos(c.rot) * c.scale, sn = Math.sin(c.rot) * c.scale;
     ctx.setTransform(dpr * cs, dpr * sn, -dpr * sn, dpr * cs, dpr * o.x, dpr * o.y);
-    ctx.imageSmoothingEnabled = c.scale < 6;
+    ctx.imageSmoothingEnabled = true;
     const s = this.region.stride;
     ctx.drawImage(this.base, 0, 0, this.base.width * s, this.base.height * s);
     // analytical layers: non-destructive alpha blending
     for (const L of this.layers) {
       if (!L.visible || !L.canvas) continue;
-      ctx.globalAlpha = L.opacity;
-      ctx.drawImage(L.canvas, 0, 0, L.canvas.width * L.stride, L.canvas.height * L.stride);
+      drawLayer(ctx, L);
     }
     ctx.globalAlpha = 1;
     if (this.opts.contours) {
@@ -263,6 +264,7 @@ export class Map2D {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.drawHazards(ctx);
     this.drawHalos(ctx);
+    this.drawBeams(ctx);
     this.drawRoutes(ctx);
     this.drawEntities(ctx);
     if (this.opts.labels) this.drawLabels(ctx);
@@ -293,12 +295,30 @@ export class Map2D {
   drawHalos(ctx) {
     for (const h of this.halos) {
       const p = this.llToScreen(h.lat, h.lon);
-      const r = Math.max(4, h.radius_m * this.pxPerMeter());
+      const r = Math.max(9, h.radius_m * this.pxPerMeter());
       const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
       grad.addColorStop(0, h.color || "rgba(79,208,196,0.35)");
       grad.addColorStop(1, "rgba(79,208,196,0)");
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  drawBeams(ctx) {
+    for (const beam of this.beams) {
+      const p = this.llToScreen(beam.lat, beam.lon);
+      const radius = Math.max(24, beam.length_m * this.pxPerMeter());
+      const a = (beam.heading - 90) * Math.PI / 180 + this.cam.rot;
+      const arc = beam.halfAngle * Math.PI / 180;
+      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+      gradient.addColorStop(0, "rgba(255,219,133,0.42)");
+      gradient.addColorStop(1, "rgba(255,219,133,0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.arc(p.x, p.y, radius, a - arc, a + arc);
+      ctx.closePath();
+      ctx.fill();
     }
   }
 

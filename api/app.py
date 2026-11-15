@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from khipu.resources import ROVER_DEMO_CAPACITY_WH
 from khipu.operations import CONTINGENCIES, Localizer, PurePursuit
 from khipu.physics import ephemeris as eph
 from khipu.physics import metabolic as met
@@ -198,7 +199,7 @@ def add_asset(a: S.AssetIn):
     data = a.model_dump(exclude_none=True)
     if a.kind in ("rover", "astronaut"):
         data["virtual"] = True
-        data.setdefault("resources", {"battery_wh": 60000} if a.kind == "rover" else
+        data.setdefault("resources", {"battery_wh": ROVER_DEMO_CAPACITY_WH} if a.kind == "rover" else
                         {"o2_kg": 1.2, "water_kg": 3.6, "battery_wh": 1100})
     if t is not None and data.get("elevation_m") is None:
         data["elevation_m"] = t.elevation_at(a.lat, a.lon)
@@ -275,6 +276,8 @@ def _rt(mgr):
 
 @app.get("/api/layers/{field_id}")
 def layer_snapshot(field_id: str, region_key: str | None = None, stride: int = Query(2, ge=1, le=16),
+                   row: int | None = Query(None, ge=0), col: int | None = Query(None, ge=0),
+                   rows: int | None = Query(None, ge=1, le=256), cols: int | None = Query(None, ge=1, le=256),
                    ltst_h: float | None = Query(None, ge=0, le=24),
                    tau: float | None = Query(None, ge=0, le=10),
                    alpha: float | None = Query(None, ge=0, le=1),
@@ -303,12 +306,23 @@ def layer_snapshot(field_id: str, region_key: str | None = None, stride: int = Q
         if field_id in ("telecom", "survival_astronaut", "survival_rover"):
             params["link_margin_offset_db"] = (link_margin_offset_db or 0) - ov["link_margin_db"]
     snap = mgr.snapshot(field_id, {k: v for k, v in params.items() if v is not None and v is not False})
-    lo, hi = (d.range_hint if d.range_hint else (None, None))
-    out = {"field_id": field_id, "available": True, "layer": d.describe(), "params": snap.params, "stats": snap.stats(),
+    stats = snap.stats()
+    lo, hi = d.range_hint or (stats["min"], stats["max"])
+    out = {"field_id": field_id, "available": True, "layer": d.describe(), "params": snap.params, "stats": stats,
+           "color_domain": [lo, hi],
            "units": snap.units, "provenance": snap.provenance.value, "simulation": bool(engine.harness.active)}
     if include_grid:
-        g = encode_grid(strided(snap.data, stride), 8, lo, hi)
-        g["stride"] = stride
+        window = (row, col, rows, cols)
+        if any(value is not None for value in window):
+            if any(value is None for value in window) or row + rows > snap.data.shape[0] or col + cols > snap.data.shape[1]:
+                raise HTTPException(422, "Ventana fuera de la cuadrícula")
+            grid = snap.data[row:row + rows, col:col + cols]
+        else:
+            row, col = 0, 0
+            rows, cols = snap.data.shape
+            grid = snap.data
+        g = encode_grid(strided(grid, stride), 8, lo, hi)
+        g.update(stride=stride, row=row, col=col, width=cols, height=rows)
         out["grid"] = g
     return ok(out)
 
@@ -405,7 +419,7 @@ def export_csv(req: S.ExportRequest):
 
 @app.post("/api/voice/command")
 def voice_command(req: S.VoiceRequest):
-    return ok(engine.voice(req.text, req.interface))
+    return ok(engine.voice(req.text, req.interface, [p.model_dump() for p in req.points], req.language))
 
 
 @app.post("/api/fsm/evaluate")
@@ -494,9 +508,10 @@ def eva_surface_route(req: S.EvaSurfaceRoute):
         raise HTTPException(422, "El activo debe ser un astronauta")
     base = next((a for a in engine.scenario["assets"] if a["kind"] == "base"), None)
     points = [p.model_dump() for p in req.points]
-    if base is None or any(haversine_m(base["lat"], base["lon"], p["lat"], p["lon"]) > 2000 for p in points):
+    walk_limit = engine.eva_walkback_limit()
+    if base is None or any(haversine_m(base["lat"], base["lon"], p["lat"], p["lon"]) > walk_limit for p in points):
         raise RouteInfeasible("walkback_exceeded", "La ruta excede el radio de retorno a pie")
-    params = {"max_distance_m": 2000}
+    params = {"max_distance_m": walk_limit, "ltst_h": req.ltst_h}
     terrain, costmap, link = engine.operational_costmap(engine.default_region(), "astronaut", params, asset=asset)
     navigation.check_endpoints(terrain, costmap, [((points[0]["lat"], points[0]["lon"]), "origen"),
                                                   ((points[-1]["lat"], points[-1]["lon"]), "destino")])
@@ -505,7 +520,9 @@ def eva_surface_route(req: S.EvaSurfaceRoute):
         navigation.forbid([navigation.issue("slope", "El sendero de entrenamiento cruza una pendiente no transitable.")])
     telemetry = {key: value for key, value in {"o2_kg": req.available_o2_kg, "water_kg": req.available_water_kg,
                                                 "battery_wh": req.available_battery_wh}.items() if value is not None}
-    points, metrics, pnr, issues = engine.evaluate_corridor(terrain, points, "astronaut", params, asset, link, 1.4, telemetry)
+    points, metrics, pnr, issues = engine.evaluate_corridor(
+        terrain, points, "astronaut", params, asset, link, 1.4, telemetry,
+        manager=engine.manager(engine.default_region()), costmap=costmap, region=engine.default_region())
     if issues:
         navigation.forbid(issues)
     return ok({"points": points, "metrics": metrics, "pnr": pnr,

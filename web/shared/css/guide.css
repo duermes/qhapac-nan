@@ -1,0 +1,89 @@
+
+/* Shared language menu and navigation guide. */
+.qn-settings { position: relative; flex: none; font-size: .8rem; }
+.qn-settings summary {
+  list-style: none;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  min-width: 38px;
+  padding: 0 6px;
+  border: 1px solid var(--joint);
+  background: var(--glass);
+  color: var(--gold);
+  font: 600 .76rem var(--font-mono);
+  cursor: pointer;
+}
+.qn-settings summary::marker, .qn-settings summary::before { content: none; }
+.qn-settings summary::-webkit-details-marker { display: none; }
+.qn-settings[open] summary { border-color: var(--gold); }
+.qn-settings-options {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 66;
+  width: max-content; max-width: min(240px, 85vw); padding: 8px;
+  background: #181a15; box-shadow: 0 8px 28px #0008;
+}
+.qn-settings-languages { display: flex; gap: 4px; }
+.qn-settings-options .btn { justify-content: center; }
+.qn-settings-options .btn[aria-pressed="true"] { color: var(--gold); border-color: var(--gold); }
+.qn-guide-start { width: 100%; margin-top: 6px; }
+.qn-guide-start[hidden] { display: none; }
+.qn-guide {
+  position: fixed; inset: 0; margin: 0; width: 100%; height: 100%;
+  max-width: none; max-height: none; overflow: hidden; padding: 0;
+  border: 0; background: transparent; color: var(--text-1);
+}
+.qn-guide::backdrop { background: rgba(6, 6, 4, .2); }
+.qn-guide-focus {
+  position: absolute; border: 2px solid var(--gold); border-radius: 3px;
+  box-shadow: 0 0 0 100vmax #0a0b09a3, 0 0 24px #edc78066;
+  pointer-events: none;
+}
+.qn-guide-card {
+  position: absolute; width: min(350px, calc(100% - 24px)); box-sizing: border-box;
+  background: #1a1b17; border: 1px solid #b5945c; padding: 14px 16px;
+  box-shadow: 0 10px 30px #0009; max-height: calc(100% - 24px); overflow-y: auto;
+  touch-action: pan-y;
+}
+.qn-guide-head, .qn-guide-card footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.qn-guide-count { color: var(--gold); font: 600 .75rem var(--font-mono); }
+.qn-guide-close { font-size: 1.2rem; min-width: 34px; padding: 0; justify-content: center; }
+.qn-guide-slide h2 { font-size: 1.25rem; margin: 4px 0 8px; }
+.qn-guide-slide p { font-size: .9rem; margin: 0 0 12px; line-height: 1.45; color: var(--text-2); }
+.qn-guide-operational .qn-guide-card { width: min(390px, calc(100% - 24px)); }
+.qn-guide-instruction strong, .qn-guide-benefit strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-1);
+  font-size: .76rem;
+  font-weight: 700;
+}
+.qn-guide-slide .qn-guide-benefit {
+  padding-left: 10px;
+  border-left: 2px solid var(--gold-dim);
+}
+.qn-guide-reveal { margin: 0 0 12px; }
+.qn-guide-slide [hidden] { display: none; }
+.qn-guide-link { display: inline-block; color: var(--gold); margin-bottom: 12px; }
+.qn-guide-link[hidden] { display: none; }
+.qn-guide-card .btn { min-height: 40px; }
+.qn-guide-card .btn:disabled { opacity: .48; }
+.qn-settings summary:focus-visible, .qn-guide :is(button, a):focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.rover .qn-settings summary { min-height: 44px; }
+.hud .qn-settings summary { min-height: 32px; }
+.console .view-switch .qn-settings .btn { min-width: auto; }
+@media (max-width: 700px) {
+  .journey-header .qn-settings summary { min-width: 31px; min-height: 34px; padding: 0 4px; }
+  .console .view-switch > .btn { min-width: 46px; }
+}
+@media (max-width: 420px) {
+  .hud .tr-btns { gap: 4px; right: 8px; }
+  .hud .qn-settings summary { min-width: 28px; min-height: 29px; padding: 0 3px; }
+}
+
+.qn-settings-host { order: 1; }
+.console .view-switch:has(.qn-settings[open]), .rover .map-actions:has(.qn-settings[open]) {
+  position: relative;
+  z-index: 3;
+}
+.hud .tr-btns:has(.qn-settings[open]) { z-index: 65; }
