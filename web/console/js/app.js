@@ -2,9 +2,9 @@
 import { api } from "/static/shared/js/api.js";
 import { fmt, haversine } from "/static/shared/js/geo.js";
 import { brandBlock, icon } from "/static/shared/js/icons.js";
-import { entitiesFrom, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
+import { entitiesFrom, loadRecordedTraverse, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
 import { Map2D } from "/static/shared/js/map2d.js";
-import { $, $$, esc, simBanner, toast } from "/static/shared/js/ui.js";
+import { $, $$, esc, provBadge, simBanner, toast } from "/static/shared/js/ui.js";
 import { initDecks, layerParams } from "./decks.js";
 import { adaptiveLayers, layerViewport, LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
 import { drawLayer } from "/static/shared/js/raster.js";
@@ -226,6 +226,7 @@ export function refreshScene() {
   m.hazards = ctx.scenario.hazards || [];
   m.toponyms = ctx.scenario.toponyms || [];
   m.routes = routeOverlays();
+  m.recordedPaths = s.recordedTraverse ? ctx.recordedPaths : [];
   m.layers = Object.entries(s.layers).filter(([, L]) => L.visible && ctx.layerCanvases?.[L.key]).map(([id, L]) => ({
     id, canvas: ctx.layerCanvases[L.key], opacity: L.opacity, visible: s.eyes.analyze, stride: LAYER_OVERVIEW_STRIDE,
     width: ctx.region.grid.cols, height: ctx.region.grid.rows,
@@ -236,6 +237,7 @@ export function refreshScene() {
   m.draw();
   if (ctx.map3d && s.view === "3d") {
     ctx.map3d.drape(composite());
+    ctx.map3d.setRecordedTraverse(m.recordedPaths);
     ctx.map3d.setRoutes(m.routes);
     ctx.map3d.setHazards(m.hidden.has("hazard") ? [] : m.hazards);
     ctx.map3d.setMarkers(ctx.entities, m.hidden);
@@ -244,7 +246,7 @@ export function refreshScene() {
   const lname = activeLayer && ctx.catalog[activeLayer]?.name;
   $("#active-layer-name").textContent = lname || "Relieve MOLA (sombreado)";
   const prov = activeLayer ? ctx.catalog[activeLayer]?.provenance : "derived_from_nasa";
-  $("#active-layer-badge").innerHTML = prov ? `<span class="badge ${prov === "official_nasa" ? "official" : prov === "derived_from_nasa" ? "derived" : prov === "synthetic" ? "synthetic" : "model"}">${prov.replaceAll("_", " ")}</span>` : "";
+  $("#active-layer-badge").innerHTML = prov ? provBadge(prov) : "";
 }
 
 /** Offscreen composite (relief + visible analytical layers) used as the 3D mantle. */
@@ -352,7 +354,9 @@ async function boot() {
     return;
   }
   ctx.region = region;
-  ctx.scenario = await loadScenario();
+  [ctx.scenario, ctx.recordedPaths] = await Promise.all([
+    loadScenario(), loadRecordedTraverse(key).catch(() => []),
+  ]);
   ctx.layerCanvases = {};
   ctx.catalog = {};
   ctx.map2d = new Map2D($("#map2d"), region);

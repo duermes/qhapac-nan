@@ -157,11 +157,20 @@ class VoicePoint(BaseModel):
     description: str = Field(default="", max_length=500)
 
 
-class VoiceRequest(BaseModel):
+class VoiceContext(BaseModel):
     language: Literal["es", "en"] = "es"
-    text: str = Field(max_length=500)
     interface: Literal["console", "rover", "hud"] = "console"
     points: list[VoicePoint] = Field(default_factory=list, max_length=100)
+
+
+class VoiceRequest(VoiceContext):
+    text: str = Field(max_length=500)
+    prefer_local: bool = False
+
+
+class VoiceAudioRequest(VoiceContext):
+    audio: str = Field(min_length=44, max_length=1_500_000)
+    mime_type: Literal["audio/webm", "audio/ogg", "audio/m4a", "audio/wav"]
 
 
 class TelemetrySnapshot(BaseModel):

@@ -57,11 +57,27 @@ Para el recorrido de navegador inicia el servidor de pruebas en el puerto 8765 c
 
 - Topografía: **MGS MOLA MEGDR `MEGT44N000HB`** (128 px/°, ~463 m/px), NASA PDS Geosciences, SHA-256 en `data/official_kickoff/manifest.json`.
 - Macrorregión derivada `syrtis_jezero_nili` (16.5–23.5°N, 73.5–79.5°E) y sectores de enfoque Jezero, NE Syrtis y Nili Fossae.
-- Base, vehículos, astronautas, zonas de exclusión, muestras y POI: **escenario sintético** rotulado en API y UI.
+- Bases, vehículos, astronautas y zonas de exclusión de la demo: **escenario sintético** rotulado en API y UI.
 - Capas ambientales (temperatura, insolación, polvo, radiación, enlace): **modelos** evaluados con parámetros declarados.
-- ISRU: no disponible (faltan datos de hidratación/hielo); la capa no se inventa.
+- ISRU requiere mapas cuantitativos de recursos extraíbles y coeficientes de rendimiento.
 - Clima InSight / APOD: servicio en vivo con `NASA_API_KEY` o `DEMO_KEY`; si falla se usa caché o fallback y se muestra el estado.
+
+### Catálogo científico de Jezero y alrededores
+
+- **Mars Trek (NASA/JPL)**: capas de minerales acuosos e hidratados, instrumentación orbital y registros agrupados por ubicación. El recorrido histórico de Perseverance se puede activar en la leyenda de Hatun Wasi o en el selector de capas de Chaski.
+- **NASA PDS (Mars 2020 Sample Dossier)**: cinco volúmenes de informes iniciales de Perseverance. Los marcadores muestran la ubicación reportada, el sol cuando consta, los materiales mencionados y el enlace a la página de origen. Incluye tubos testigo identificados con su descripción propia. Ñawi ofrece los registros dentro del área EVA en sus coordenadas originales.
+- **USGS SIM 3464**: capa de unidades geológicas Jezero–Nili Planum, con los colores del mapa original. Selecciónala en Analizar o en el selector de capas de Chaski.
+
+Los extractos de las fuentes se incluyen en `data/official_science/` y se sirven localmente en `/api/science`. Para regenerarlos desde los servicios originales y descargar los PDF del PDS, instala Poppler (con `pdftotext` en PATH) y ejecuta `python scripts/import_official_science.py --refresh --download-reports` en el entorno del proyecto. Los archivos originales de gran tamaño quedan bajo `data/official_kickoff/raw/`.
 
 ## Modo sin conexión
 
-`QN_OFFLINE=1` evita las llamadas externas de la API de datos. El motor, la planificación, las capas y las tres interfaces funcionan con MOLA local; el clima NASA muestra «no disponible/caché». Khipu Voz interpreta las órdenes en `POST /api/voice/command` y funciona con reconocimiento y síntesis del navegador en Hatun Wasi, Chaski y Ñawi. Usa un navegador compatible y permite el micrófono desde localhost o HTTPS. El reconocimiento puede requerir conexión según el servicio de voz del navegador. No se necesita una API key de Gemini.
+`QN_OFFLINE=1` evita las llamadas externas de la aplicación. El motor, la planificación y las capas funcionan con MOLA local. El clima NASA muestra «no disponible/caché».
+
+## Voz de Khipu
+
+Configura `GEMINI_API_KEY` en el `.env` del servidor y reinicia la aplicación. El modelo predeterminado es `gemini-3.5-flash-lite`. Desde Hatun Wasi, Chaski o Ñawi, pulsa Voz o K, habla y vuelve a pulsar para enviar. La grabación se envía sola al llegar a seis segundos. Requiere permiso de micrófono y acceso desde localhost o HTTPS.
+
+El navegador envía la grabación a `POST /api/voice/audio`. El servidor la envía a Gemini para transcribirla y clasificar la orden. Khipu valida el destino o la capa y mantiene el cálculo de rutas y reservas. La lectura de la respuesta usa la voz del navegador en el idioma seleccionado.
+
+Si Gemini está desactivado, la aplicación usa el reconocimiento disponible en el navegador y resuelve comandos por reglas locales. Si falla la solicitud de audio, vuelve a pulsar Voz para intentar ese modo. La disponibilidad del reconocimiento del navegador depende del navegador y su conexión.

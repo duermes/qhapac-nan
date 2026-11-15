@@ -80,11 +80,15 @@ export const ASSET_REGISTRY = {
   waypoint: { icon: "pin", color: "#f3ebdc", label: "Waypoint" },
   poi: { icon: "flask", color: "#b18cff", label: "POI científico" },
   sample: { icon: "sample", color: "#3fbf7f", label: "Muestra" },
+  rover_sample: { icon: "sample", color: "#68e1ff", label: "Muestras de Perseverance" },
+  orbital: { icon: "flask", color: "#f4a887", label: "Detecciones de Mars Trek" },
   landmark: { icon: "station", color: "#b8b3a5", label: "Infraestructura" },
   hazard: { icon: "hazard", color: "#e0534a", label: "Peligro" },
   lava_pit: { icon: "hazard", color: "#ff8c36", label: "Fosa de lava" },
   laboratory: { icon: "flask", color: "#72cec7", label: "Laboratorio" },
 };
+
+export const markerKind = (e) => e.source === "official_science" ? e.category : e.kind;
 
 export function brandBlock(sub) {
   return `<div class="brand panel cut" role="banner">

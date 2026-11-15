@@ -1,11 +1,11 @@
 // Floating decks: layers, legend, metrics, risk inspector and nearby POIs.
 import { api } from "/static/shared/js/api.js";
 import { fmt, haversine } from "/static/shared/js/geo.js";
-import { ASSET_REGISTRY, icon } from "/static/shared/js/icons.js";
+import { ASSET_REGISTRY, icon, markerKind } from "/static/shared/js/icons.js";
 import { layerGrid } from "/static/shared/js/khipu-client.js";
 import { LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
 import { LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.js";
-import { $, $$, createDeck, esc, provBadge, toast } from "/static/shared/js/ui.js";
+import { $, $$, classLegend, createDeck, esc, provBadge, toast } from "/static/shared/js/ui.js";
 import { persist, refreshScene } from "./app.js";
 
 let ctx;
@@ -75,7 +75,7 @@ async function ensureLayer(id) {
   const res = await layerGrid(ctx.region.key, id, { ...p, stride: LAYER_OVERVIEW_STRIDE });
   if (!res.available) { toast(`${d.name}: ${res.reason}`, "warn", 5000); L.visible = false; return; }
   const [lo, hi] = res.color_domain;
-  ctx.layerCanvases[key] = renderLayer(res.decoded, d.colormap, id, lo, hi);
+  ctx.layerCanvases[key] = renderLayer(res.decoded, d.colormap, id, lo, hi, d.classes);
   if (L.key !== key) return;
   L.stats = res.stats;
   L.paramsUsed = res.params;
@@ -170,13 +170,14 @@ function renderLayers() {
         <div class="layer-top"><span class="name">${esc(def.name)}</span>
           <button class="btn btn-icon" data-toggle="${def.id}" aria-pressed="${!!layer.visible}" aria-label="Mostrar u ocultar ${esc(def.name)}" ${def.available ? "" : "disabled"}>${icon(layer.visible ? "eye" : "eyeoff")}</button></div>
         <p class="layer-inputs" title="${mixed ? "Incluye datos del escenario sintético" : esc(def.description)}">${esc(inputs.join(" + "))}</p>
-        ${layer.visible ? `<div class="legend-ramp" style="background:linear-gradient(90deg,${ramp})"></div>
+        ${layer.visible && !def.classes ? `<div class="legend-ramp" style="background:linear-gradient(90deg,${ramp})"></div>
           <div class="layer-meta mono"><span>${fmt.num(layer.stats?.min ?? def.range_hint?.[0], 1)}</span>
           <span>${fmt.num(layer.stats?.max ?? def.range_hint?.[1], 1)} ${esc(def.units)}</span></div>` : ""}
         ${def.available ? `<details class="layer-settings" ${layer.expanded ? "open" : ""}>
           <summary>Parámetros</summary>
           ${["opacity", ...(def.controls || [])].map((key) => layerControl(def, layer, key)).join("")}
           <button class="btn" data-reset="${def.id}">${icon("reset")} Restablecer</button>
+          ${def.classes ? classLegend(def.classes) : ""}
           <p class="dim small">${esc(def.description)}${mixed ? " Incluye datos del escenario sintético." : ""}</p>
           ${layer.simulation ? '<span class="badge sim">Contingencia activa</span>' : ""}
           </details>` : `<p class="small dim">${esc(def.unavailable_reason)}</p>`}
@@ -209,11 +210,11 @@ function renderLegend() {
   const deck = ctx.decks.legend;
   if (deck.hidden) return;
   const s = ctx.cur;
-  const kinds = [...new Set((ctx.entities || []).map((e) => e.kind))].filter((kind) => kind !== "hazard");
+  const kinds = [...new Set((ctx.entities || []).map(markerKind))].filter((kind) => kind !== "hazard");
   const hidden = new Set(s.hidden);
   const visibleLayers = Object.entries(s.layers).filter(([, L]) => s.eyes.analyze && L.visible).map(([id]) => ctx.catalog[id]).filter(Boolean);
   const item = (kind, label, color, round = false) => {
-    const shown = !hidden.has(kind);
+    const shown = kind === "recorded_traverse" ? !!s.recordedTraverse : !hidden.has(kind);
     return `<div class="legend-item"><span class="sw" style="border-color:${color};border-radius:${round ? "50%" : "0"}"></span>
       <span>${esc(label)}</span>
       <button class="btn btn-icon" type="button" data-kind="${kind}" aria-pressed="${shown}"
@@ -222,22 +223,26 @@ function renderLegend() {
   deck.body.innerHTML = `<div class="kicker">Elementos</div>`
     + kinds.map((kind) => {
       const asset = ASSET_REGISTRY[kind] || ASSET_REGISTRY.waypoint;
-      return item(kind, asset.label, asset.color, ["poi", "sample", "rover", "astronaut", "antenna"].includes(kind));
+      return item(kind, asset.label, asset.color, ["poi", "sample", "rover", "astronaut", "antenna", "rover_sample", "orbital"].includes(kind));
     }).join("")
     + item("hazard", "Zonas de exclusión (sintéticas)", "var(--danger)", true)
     + `<hr class="joint"/><div class="kicker">Rutas</div>
       <div class="legend-item"><span class="sw" style="border-color:var(--route-direct);border-style:dashed;height:3px"></span>Ruta directa (euclídea)</div>
       <div class="legend-item"><span class="sw" style="border-color:#65d8ff;height:3px"></span>Retorno con reserva</div>
       <div class="legend-item"><span class="sw" style="border-color:#ff8c36;height:3px"></span>Retorno no garantizado</div>`
+    + (ctx.recordedPaths?.length ? item("recorded_traverse", "Recorrido histórico de Perseverance", "#dcb2f2") : "")
     + `<hr class="joint"/><div class="kicker">Capas visibles</div>`
     + (visibleLayers.length ? visibleLayers.map((d) => `<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;gap:6px;font-size:12px"><span>${esc(d.name)}</span>${provBadge(d.provenance)}</div>
-        <div class="legend-ramp" style="background:linear-gradient(90deg,${LEGEND_STOPS(d.colormap).join(",")})"></div>
+        ${d.classes ? classLegend(d.classes) : `<div class="legend-ramp" style="background:linear-gradient(90deg,${LEGEND_STOPS(d.colormap).join(",")})"></div>`}
         <div class="dim" style="font-size:10px">${esc(d.units)} · ${esc(d.description)}</div></div>`).join("") : `<div class="empty-state">Relieve MOLA sombreado (derivado de NASA). Activa capas en «Analizar».</div>`)
-    + `<hr class="joint"/><div class="dim" style="font-size:10px">Topografía: ${esc(ctx.region.manifest?.source?.product_id || "MOLA")} · ${esc(ctx.region.manifest?.resolution || "")}. Entidades y zonas: escenario sintético.</div>`;
+    + `<hr class="joint"/><div class="dim" style="font-size:10px">Topografía: ${esc(ctx.region.manifest?.source?.product_id || "MOLA")} · ${esc(ctx.region.manifest?.resolution || "")}. Puntos científicos con ficha de origen. Zonas de exclusión del escenario.</div>`;
   $$("[data-kind]", deck.body).forEach((i) => i.addEventListener("click", () => {
     const set = new Set(s.hidden);
-    if (set.has(i.dataset.kind)) set.delete(i.dataset.kind); else set.add(i.dataset.kind);
-    const shown = !set.has(i.dataset.kind);
+    const kind = i.dataset.kind;
+    if (kind === "recorded_traverse") s.recordedTraverse = !s.recordedTraverse;
+    else if (set.has(kind)) set.delete(kind);
+    else set.add(kind);
+    const shown = kind === "recorded_traverse" ? s.recordedTraverse : !set.has(kind);
     i.setAttribute("aria-pressed", String(shown));
     i.innerHTML = icon(shown ? "eye" : "eyeoff");
     s.hidden = [...set];

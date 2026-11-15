@@ -3,11 +3,11 @@
 import { api } from "/static/shared/js/api.js";
 import { bearing, destination, fmt, haversine } from "/static/shared/js/geo.js";
 import { brandBlock, icon } from "/static/shared/js/icons.js";
-import { entitiesFrom, layerGrid, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
+import { entitiesFrom, layerGrid, loadRecordedTraverse, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
 import { Map2D } from "/static/shared/js/map2d.js";
 import { adaptiveLayers, layerViewport, LAYER_OVERVIEW_STRIDE } from "/static/shared/js/layer-detail.js";
 import { drawLayer, LEGEND_STOPS, renderLayer } from "/static/shared/js/raster.js";
-import { $, $$, esc, modal, provBadge, simBanner, toast } from "/static/shared/js/ui.js";
+import { $, $$, classLegend, colocatedScience, colocatedScienceSelect, esc, modal, provBadge, scienceDetails, simBanner, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 
 const ROVER_ID = new URLSearchParams(location.search).get("rover") || "ROVER_PR1";
@@ -20,7 +20,7 @@ const S = {
 window.chaski = S;
 let region, scenario, map, map3d = null, entities = [], voice, base, catalog = {};
 
-const MAP_LAYERS = { relief: "Relieve", slope: "Pendiente", hazard: "Riesgo", ibio: "Ciencia", telecom: "Enlace" };
+const MAP_LAYERS = { relief: "Relieve", slope: "Pendiente", hazard: "Riesgo", ibio: "Ciencia", telecom: "Enlace", geology_usgs: "Geología USGS", recorded_traverse: "Recorrido histórico de Perseverance" };
 
 function iconize() { $$("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); }); }
 
@@ -30,7 +30,9 @@ async function boot() {
   const regions = await api.regions();
   region = await loadRegion(regions.default, 1);
   if (!region.available) { toast("Sin datos de terreno: Chaski en modo vacío", "danger", 10000); return; }
-  scenario = await loadScenario();
+  [scenario, S.recordedPaths] = await Promise.all([
+    loadScenario(), loadRecordedTraverse(region.key).catch(() => []),
+  ]);
   entities = entitiesFrom(scenario);
   const rover = entities.find((e) => e.id === ROVER_ID) || entities.find((e) => e.kind === "rover");
   base = entities.find((e) => e.kind === "base");
@@ -60,7 +62,7 @@ async function boot() {
   // telecom grid for link margin sampling (same Khipu layer as the console)
   layerGrid(region.key, "telecom", {}).then((r) => { S.telecom = r.decoded; }).catch(() => {});
   bindUI();
-  voice = new VoiceCopilot({ iface: "rover", onIntent: handleIntent, button: $("#voice") });
+  voice = new VoiceCopilot({ iface: "rover", onIntent: handleIntent, button: $("#voice"), points: () => entities });
   api.harness().then((h) => simBanner(h.simulation)).catch(() => {});
   setMode("navigate");
   pickDefaultTarget();
@@ -112,6 +114,7 @@ function centerBodyFrame() {
 
 function refresh() {
   map.entities = [...entities.filter((e) => e.id !== S.assetId && (S.radar || !["poi", "sample"].includes(e.kind) || S.mode !== "navigate")), roverEntity()];
+  map.recordedPaths = S.layer === "recorded_traverse" ? S.recordedPaths : [];
   map.routes = S.route ? [{ id: "route", points: S.route.points, color: "#65d8ff", width: 4,
     segments: S.route.pnr?.show_pnr ? S.route.pnr.segments : null, pnr: S.route.pnr?.pnr_point }] : [];
   S.layerDetail?.update();
@@ -122,6 +125,7 @@ function refresh() {
   })).filter((item) => item.canvas);
   updatePose();
   if (map3d && S.view === "3d") {
+    map3d.setRecordedTraverse(map.recordedPaths);
     map3d.setRoutes(map.routes);
     map3d.setMarkers(map.entities);
     const mantleKey = JSON.stringify([S.layer, ...map.layers.map((layer) => layer.detail?.tileKey)]);
@@ -418,9 +422,13 @@ async function onMapClick(ll, hit, force = false) {
 
 function inspectEntity(e) {
   const d = haversine(S.lat, S.lon, e.lat, e.lon);
+  const nearby = colocatedScience(e, entities);
   showInspect(e.name, `<div class="kicker">${esc(e.kind)} ${provBadge(e.provenance || "synthetic")}</div>${e.description ? `<p style="font-size:12px">${esc(e.description)}</p>` : ""}
+    ${scienceDetails(e)}
+    ${colocatedScienceSelect(e, nearby)}
     <dl class="kv"><dt>Distancia</dt><dd>${fmt.m(d)}</dd><dt>Rumbo</dt><dd>${bearing(S.lat, S.lon, e.lat, e.lon).toFixed(0)}°</dd><dt>Elevación</dt><dd>${fmt.num(region.elevationAt(e.lat, e.lon), 0)} m</dd></dl>
     <button class="btn btn-gold" id="plan-here" style="width:100%;margin-top:8px">Trazar ruta rápida</button>`);
+  $("#same-location")?.addEventListener("change", (ev) => inspectEntity(nearby.find((p) => p.id === ev.target.value)));
   $("#plan-here").addEventListener("click", () => planTo({ id: e.id, name: e.name, lat: e.lat, lon: e.lon }));
 }
 
@@ -438,8 +446,8 @@ async function toggleLayer(id, on) {
   if (on && !S.layerCanvas[id]) {
     const r = await layerGrid(region.key, id, { stride: LAYER_OVERVIEW_STRIDE });
     if (!r.available) { toast(r.reason, "warn"); S.layers[id] = false; return; }
-    S.layerCanvas[id] = renderLayer(r.decoded, r.layer.colormap, id, ...r.color_domain);
-    (S.layerMeta ||= {})[id] = { name: r.layer.name, units: r.layer.units, colormap: r.layer.colormap, provenance: r.provenance,
+    S.layerCanvas[id] = renderLayer(r.decoded, r.layer.colormap, id, ...r.color_domain, r.layer.classes);
+    (S.layerMeta ||= {})[id] = { name: r.layer.name, units: r.layer.units, colormap: r.layer.colormap, provenance: r.provenance, classes: r.layer.classes,
       lo: r.layer.range_hint?.[0] ?? r.stats.min, hi: r.layer.range_hint?.[1] ?? r.stats.max };
   }
   refresh();
@@ -479,7 +487,7 @@ function handleIntent(r) {
   if (r.intent === "emergency_stop") toast("Emergencia: contacta al operador del rover", "danger");
   if (r.intent === "safe_return") safeReturn();
   if (r.intent === "select_layer") {
-    if (catalog[r.layer_id] || MAP_LAYERS[r.layer_id]) selectLayer(r.layer_id);
+    if (catalog[r.layer_id] || r.layer_id === "relief" || r.layer_id === "recorded_traverse" && S.recordedPaths.length) selectLayer(r.layer_id);
     else toast("Capa sin datos disponibles", "warn");
   }
   if (r.intent === "plan_target") {
@@ -494,11 +502,13 @@ function handleIntent(r) {
 function renderLegend() {
   let el = $("#rover-legend");
   const on = Object.entries(S.layers).filter(([id, v]) => v && S.layerMeta?.[id]);
-  if (!on.length || !S.panels) { el?.remove(); return; }
+  const recorded = S.layer === "recorded_traverse";
+  if ((!recorded && !on.length) || !S.panels) { el?.remove(); return; }
   if (!el) { el = document.createElement("div"); el.id = "rover-legend"; el.className = "panel rover-legend"; el.setAttribute("aria-label", "Leyenda de capas"); document.body.appendChild(el); }
   el.innerHTML = `<div class="kicker">Leyenda</div>` + on.map(([id]) => { const m = S.layerMeta[id]; return `<div class="small" style="margin-top:6px;display:flex;justify-content:space-between;gap:6px"><span>${esc(m.name)}</span>${provBadge(m.provenance)}</div>
-    <div style="height:7px;margin:3px 0;background:linear-gradient(90deg,${LEGEND_STOPS(m.colormap).join(",")})"></div>
-    <div class="small mono dim" style="display:flex;justify-content:space-between"><span>${fmt.num(m.lo, 1)}</span><span>${fmt.num(m.hi, 1)} ${esc(m.units)}</span></div>`; }).join("")
+    ${m.classes ? classLegend(m.classes) : `<div style="height:7px;margin:3px 0;background:linear-gradient(90deg,${LEGEND_STOPS(m.colormap).join(",")})"></div>
+    <div class="small mono dim" style="display:flex;justify-content:space-between"><span>${fmt.num(m.lo, 1)}</span><span>${fmt.num(m.hi, 1)} ${esc(m.units)}</span></div>`}`; }).join("")
+    + (recorded ? `<div class="small">Recorrido histórico de Perseverance ${provBadge("official_nasa")}</div>` : "")
     + `<div class="small dim" style="margin-top:6px">Curvas de nivel: MOLA (derivado NASA) · Zonas: escenario sintético</div>`;
 }
 
@@ -507,7 +517,7 @@ async function selectLayer(id) {
   $("#map-layer-label").textContent = MAP_LAYERS[id] || catalog[id]?.name || id;
   for (const key of Object.keys(S.layers)) S.layers[key] = false;
   try {
-    if (id !== "relief") await toggleLayer(id, true);
+    if (id !== "relief" && id !== "recorded_traverse") await toggleLayer(id, true);
     else { refresh(); renderLegend(); }
     if (S.layer !== id) return;
     refresh();
@@ -580,7 +590,7 @@ function bindUI() {
   $("#view-toggle").addEventListener("click", () => setView(S.view === "2d" ? "3d" : "2d"));
   $("#demo-btn").addEventListener("click", demoDialog);
   $("#map-menu-btn").addEventListener("click", () => {
-    const order = Object.keys(MAP_LAYERS);
+    const order = Object.keys(MAP_LAYERS).filter((id) => id === "relief" || catalog[id] || id === "recorded_traverse" && S.recordedPaths.length);
     selectLayer(order[(order.indexOf(S.layer) + 1) % order.length]);
   });
   const panelButton = $("#panels-toggle");
@@ -607,7 +617,7 @@ function bindUI() {
     if (k === "1") setMode("navigate");
     if (k === "2") setMode("recon");
     if (k === "3") setMode("plan");
-    if (k === "k") voice.start();
+    if (k === "k" && !e.repeat) voice.start();
   });
   document.addEventListener("keyup", (event) => S.demoKeys.delete(keymap[event.key.toLowerCase()]));
   window.addEventListener("blur", () => S.demoKeys.clear());

@@ -4,9 +4,16 @@ from conftest import needs_mola, read, web_text
 
 @needs_mola
 def test_api_official_routes_all_regions(client):
-    for k in ("syrtis_jezero_nili", "jezero", "ne_syrtis", "nili_fossae"):
-        j = client.get(f"/api/official_routes/{k}").json()
-        assert j["official"] == [] and j["classification"] == "unavailable" and j["message"]
+    for key in ("syrtis_jezero_nili", "jezero"):
+        result = client.get(f"/api/official_routes/{key}").json()
+        assert result["classification"] == "official_nasa"
+        track, = result["official"]
+        assert len(track["segments"]) == track["records"] == 332
+        assert track["sol_start"] == 14 and track["sol_end"] == 1176
+        assert track["url"].startswith("https://trek.nasa.gov/")
+    for key in ("ne_syrtis", "nili_fossae"):
+        result = client.get(f"/api/official_routes/{key}").json()
+        assert result["official"] == [] and result["classification"] == "unavailable"
     assert client.get("/api/official_routes/nowhere").status_code == 404
 
 

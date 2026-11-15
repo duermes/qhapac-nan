@@ -3,6 +3,8 @@
 Run: .venv/bin/uvicorn api.app:app --port 8000  (from workspace/)"""
 from __future__ import annotations
 
+import base64
+import binascii
 import math
 import os
 import time
@@ -22,6 +24,7 @@ from khipu.physics import metabolic as met
 from khipu.physics import terramechanics as tm
 from khipu.router import RouteInfeasible
 from khipu import inspection
+from khipu_data.gemini import GeminiVoiceError
 from khipu_data.pds3 import PDS3Error
 
 from . import schemas as S
@@ -123,6 +126,7 @@ def data_manifest():
     import json as _json
     m = _json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"schema_version": "1.0", "datasets": []}
     return ok({"kickoff_manifest": m, "regions": list(engine.regions.manifests().values()),
+               "science_sources": engine.science.data["sources"],
                "scenario": {"classification": engine.scenario.get("classification"), "label": engine.scenario.get("label"),
                             "notes": engine.scenario.get("notes")},
                "layers": engine.manager(engine.default_region()).list() if engine.regions.manifests() else []})
@@ -130,7 +134,12 @@ def data_manifest():
 
 @app.get("/api/scenario")
 def scenario():
-    return ok(engine.scenario)
+    return ok({**engine.scenario, "science_points": engine.science.entities})
+
+
+@app.get("/api/science")
+def science_catalog():
+    return ok(engine.science.data)
 
 
 @app.get("/api/terrain/{region_key}")
@@ -146,11 +155,22 @@ def terrain_sample(region_key: str, lat: float, lon: float):
 
 @app.get("/api/official_routes/{region_key}")
 def official_routes(region_key: str):
-    if engine.regions.manifest(region_key) is None:
+    manifest = engine.regions.manifest(region_key)
+    if manifest is None:
         raise HTTPException(404, f"region '{region_key}' not available")
-    return ok({"region_key": region_key, "official": [], "classification": "unavailable",
-               "message": "No hay recorridos oficiales NASA (p. ej. traverse de Perseverance) en el manifiesto de datos. "
-                          "Las travesías mostradas son planificadas por Khipu sobre MOLA con el escenario sintético."})
+    track = engine.science.track
+    bbox = manifest.get("focus_bbox") or manifest["geometry"]
+    segments = []
+    if track:
+        segments = [s for s in track["segments"] if any(
+            bbox["lat_min"] <= lat <= bbox["lat_max"] and bbox["lon_min"] <= lon <= bbox["lon_max"]
+            for path in s["paths"] for lon, lat, *_ in path
+        )]
+    return ok({"region_key": region_key, "official": [{**track, "segments": segments}] if segments else [],
+               "classification": "official_nasa" if segments else "unavailable",
+               "message": ("Trayectoria histórica registrada por Mars Trek."
+                           if segments else "Sin recorridos oficiales en esta región.")})
+
 
 
 @app.get("/api/mars_time")
@@ -194,8 +214,8 @@ def assets(session_id: str | None = None):
 @app.post("/api/assets")
 def add_asset(a: S.AssetIn):
     t = engine.regions.terrain(engine.default_region())
-    if any(a.id == p["id"] for p in engine.all_entities() if p["source"] == "scenario"):
-        raise HTTPException(409, "El identificador pertenece a un activo desplegado de solo lectura")
+    if any(a.id == p["id"] for p in engine.all_entities() if p["source"] in {"scenario", "official_science"}):
+        raise HTTPException(409, "El identificador pertenece a un punto de solo lectura")
     data = a.model_dump(exclude_none=True)
     if a.kind in ("rover", "astronaut"):
         data["virtual"] = True
@@ -208,8 +228,8 @@ def add_asset(a: S.AssetIn):
 
 @app.patch("/api/assets/{asset_id}")
 def patch_asset(asset_id: str, p: S.AssetPatch):
-    if any(asset_id == e["id"] for e in engine.all_entities() if e["source"] == "scenario"):
-        raise HTTPException(409, "Activo desplegado de solo lectura")
+    if any(asset_id == e["id"] for e in engine.all_entities() if e["source"] in {"scenario", "official_science"}):
+        raise HTTPException(409, "Punto de solo lectura")
     try:
         patch = p.model_dump(exclude_none=True)
         terrain = engine.regions.terrain(engine.default_region())
@@ -223,8 +243,8 @@ def patch_asset(asset_id: str, p: S.AssetPatch):
 
 @app.delete("/api/assets/{asset_id}")
 def delete_asset(asset_id: str):
-    if any(asset_id == e["id"] for e in engine.all_entities() if e["source"] == "scenario"):
-        raise HTTPException(409, "Activo desplegado de solo lectura")
+    if any(asset_id == e["id"] for e in engine.all_entities() if e["source"] in {"scenario", "official_science"}):
+        raise HTTPException(409, "Punto de solo lectura")
     return ok({"deleted": engine.assets.delete(asset_id)})
 
 
@@ -417,9 +437,30 @@ def export_csv(req: S.ExportRequest):
 # ------------------------------------------------------------------ operations helpers
 
 
+@app.get("/api/voice/status")
+def voice_status():
+    return ok({"provider": "gemini" if engine.gemini_voice.enabled else "local",
+               "audio": engine.gemini_voice.enabled})
+
+
+@app.post("/api/voice/audio")
+def voice_audio(req: S.VoiceAudioRequest):
+    try:
+        base64.b64decode(req.audio, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "La grabación no es Base64 válido.") from None
+    try:
+        return ok(engine.voice("", req.interface, [p.model_dump() for p in req.points], req.language,
+                               audio=req.audio, mime_type=req.mime_type))
+    except GeminiVoiceError as exc:
+        return JSONResponse({"error": "voice_provider_unavailable", "provider_reason": exc.reason,
+                             "detail": "Gemini no pudo interpretar la grabación."}, status_code=503)
+
+
 @app.post("/api/voice/command")
 def voice_command(req: S.VoiceRequest):
-    return ok(engine.voice(req.text, req.interface, [p.model_dump() for p in req.points], req.language))
+    return ok(engine.voice(req.text, req.interface, [p.model_dump() for p in req.points], req.language,
+                           prefer_local=req.prefer_local))
 
 
 @app.post("/api/fsm/evaluate")

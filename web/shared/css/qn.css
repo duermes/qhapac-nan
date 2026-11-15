@@ -121,6 +121,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .switch input:focus-visible + .track { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 /* outline badges, no opaque background */
+.science-legend { list-style: none; padding: 0; margin: 6px 0; max-height: 170px; overflow: auto; font-size: 11px; }
+.science-legend li { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+.science-legend li > span { display: inline-block; flex: 0 0 10px; height: 8px; border: 1px solid var(--joint); }
+
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; font-size: 10px; letter-spacing: .06em; border: 1px solid currentColor; background: transparent; text-transform: uppercase; white-space: nowrap; }
 .badge.official { color: var(--safe); }
 .badge.derived { color: var(--info); }

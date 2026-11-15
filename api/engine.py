@@ -13,15 +13,17 @@ import numpy as np
 
 from khipu import exporters, inspection, navigation, voice
 from khipu.costmap import CostParams, HazardZone, TIER_FORBIDDEN, compute_costmap, distance_grid_m
-from khipu.domain import MOBILE_KINDS, make_asset
+from khipu.domain import MOBILE_KINDS, Provenance, make_asset
 from khipu.geodesy import haversine_m
-from khipu.layers import LayerContext, SnapshotManager, build_catalog, realtime_params
+from khipu.layers import LayerContext, LayerDef, SnapshotManager, build_catalog, realtime_params
 from khipu.operations import DemoHarness, MissionFSM, PeerSwarm
 from khipu.resources import EVA_WALKBACK_LIMIT_M, PNR_DEFAULTS, ResourceLedger, assess_route, route_metrics, segment_cost
 from khipu.router import RouteInfeasible, RouterConfig, direct_route, path_hits_obstacle, plan
 from khipu.terrain import TerrainContext
+from khipu_data.gemini import GeminiVoiceClient, GeminiVoiceError
 from khipu_data.nasa_client import NasaClient
 from khipu_data.regions import DATA, MACRO_KEY, RegionStore
+from khipu_data.science import ScienceCatalog
 from khipu_data.store import AssetRepository, JsonStore
 
 SCENARIO_PATH = DATA / "fixtures" / "synthetic" / "scenario.json"
@@ -56,7 +58,9 @@ class Engine:
         self.scenario = json.loads(SCENARIO_PATH.read_text(encoding="utf-8")) if SCENARIO_PATH.exists() else {"assets": [], "hazards": [], "pois": []}
         self.store = JsonStore(store_dir) if store_dir else JsonStore()
         self.assets = AssetRepository(self.store)
+        self.science = ScienceCatalog()
         self.nasa = NasaClient()
+        self.gemini_voice = GeminiVoiceClient()
         self.harness = DemoHarness()
         self.fsm = MissionFSM()
         self.swarm = PeerSwarm()
@@ -78,8 +82,22 @@ class Engine:
     def manager(self, region_key: str) -> SnapshotManager:
         t = self.terrain(region_key)
         if t.key not in self._managers:
-            self._managers[t.key] = SnapshotManager(LayerContext(t, self.scenario), build_catalog(self.scenario))
+            self._managers[t.key] = SnapshotManager(LayerContext(t, self.scenario), self.layer_catalog(t))
         return self._managers[t.key]
+
+    def layer_catalog(self, terrain: TerrainContext | None = None) -> dict[str, LayerDef]:
+        catalog = build_catalog(self.scenario)
+        classes = self.science.data["geology_legend"]
+        if classes and self.science.geology is not None:
+            available = terrain is None or self.science.covers(terrain.geometry)
+            catalog["geology_usgs"] = LayerDef(
+                "geology_usgs", "Geología USGS", "", Provenance.OFFICIAL_USGS, "Geología",
+                "Unidades cartografiadas en Jezero y Nili Planum. Conserva los colores de USGS.",
+                available=available, unavailable_reason=None if available else "Fuera de la cobertura del mapa geológico.",
+                compute=lambda ctx, _: self.science.geology_grid(ctx.terrain.geometry),
+                range_hint=(1, len(classes)), classes=classes,
+            )
+        return catalog
 
     def default_region(self) -> str:
         return MACRO_KEY if self.regions.manifest(MACRO_KEY) else next(iter(self.regions.manifests()), MACRO_KEY)
@@ -117,7 +135,7 @@ class Engine:
         for point in user["general"] + user["session"]:
             entity = make_asset({**point, "virtual": point["kind"] in MOBILE_KINDS})
             ents.append({**point, **entity.to_dict(), "source": "user", "editable": not entity.locked})
-        return ents
+        return ents + self.science.entities
 
     def find_entity(self, entity_id: str | None, session_id: str | None = None) -> dict | None:
         if not entity_id:
@@ -421,9 +439,28 @@ class Engine:
         self.regions._terrain.pop(key, None)
         return m
 
-    def voice(self, text: str, interface: str, points: list[dict] | None = None, language: str = "es") -> dict:
-        pois = [e for e in self.all_entities() if e.get("kind") in ("poi", "sample", "landmark", "base", "rover", "astronaut", "antenna", "habitat")]
-        return voice.interpret(text, points if interface == "hud" and points else pois, interface, language)
+    def voice(self, text: str, interface: str, points: list[dict] | None = None, language: str = "es",
+              *, audio: str = "", mime_type: str = "", prefer_local: bool = False) -> dict:
+        pois = points or [e for e in self.all_entities() if e.get("kind") in (
+            "poi", "sample", "landmark", "base", "rover", "astronaut", "antenna", "habitat")]
+        if not prefer_local and not voice.is_explicit_emergency(text) and (text.strip() or audio) and self.gemini_voice.enabled:
+            layers = {key: layer.name for key, layer in self.layer_catalog().items() if layer.available}
+            if interface == "rover":
+                layers["relief"] = "Relieve"
+                if self.science.track:
+                    layers["recorded_traverse"] = "Recorrido histórico de Perseverance"
+            context = voice.voice_context(interface, language, pois[:100], layers)
+            try:
+                result = self.gemini_voice.classify(context, text=text, audio=audio, mime_type=mime_type)
+                action = voice.from_gemini(result, context, pois[:100], text)
+                return {**action, "provider": "gemini"}
+            except (GeminiVoiceError, ValueError) as exc:
+                if audio:
+                    raise GeminiVoiceError(getattr(exc, "reason", "invalid_command")) from None
+        if audio:
+            raise GeminiVoiceError("disabled")
+        result = voice.interpret(text, pois, interface, language)
+        return {**result, "provider": "local"}
 
     def export(self, fmt: str, route: dict, name: str = "travesia") -> dict:
         if fmt == "geojson":

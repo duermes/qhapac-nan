@@ -2,7 +2,7 @@ import { api } from "/static/shared/js/api.js";
 import { bearing, fmt, haversine } from "/static/shared/js/geo.js";
 import { ASSET_REGISTRY, icon } from "/static/shared/js/icons.js";
 import { entitiesFrom, loadRegion, loadScenario } from "/static/shared/js/khipu-client.js";
-import { $, $$, esc, modal, simBanner, toast } from "/static/shared/js/ui.js";
+import { $, $$, colocatedScience, esc, modal, scienceDetails, simBanner, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 import { currentLanguage } from "/static/shared/js/language.js";
 import { EvaScene } from "./scene.js";
@@ -33,14 +33,18 @@ async function boot() {
     H.scene = scene;
     H.x = scene.character.position.x;
     H.z = scene.character.position.z;
-    entities = scene.localEntities();
+    const half = scene.world.gridSize / 2 - 4;
+    const official = entities.filter((point) => point.source === "official_science")
+        .map((point) => ({ ...point, ...scene.toLocal(point.lat, point.lon) }))
+        .filter(({ x, z }) => Math.abs(x) < half && Math.abs(z) < half);
+    entities = [...scene.localEntities(), ...official];
     base = entities.find(e => e.kind === "base");
     const others = entities;
     scene.setMarkers(others, (n) => icon(n));
     const start = scene.toLatLon(H.x, H.z);
     H.targets = others.filter((e) => ["poi", "sample", "base", "rover", "astronaut", "landmark", "antenna"].includes(e.kind))
         .sort((a, b) => haversine(start.lat, start.lon, a.lat, a.lon) - haversine(start.lat, start.lon, b.lat, b.lon));
-    H.ti = Math.max(0, H.targets.findIndex((t) => t.kind === "sample"));
+    H.ti = Math.max(0, H.targets.findIndex((t) => t.kind === "sample" && t.provenance === "synthetic"));
     vit = createVitals();
     H.vitals = vit;
     H.ledgerQueue = Promise.resolve();
@@ -116,11 +120,11 @@ function panels() {
         : `<div class="small dim">Nada en el campo visual${H.filter ? " (filtro activo)" : ""}</div>`;
     scene.markers.forEach((m) => { m.hidden = H.filter ? !H.filter.includes(m.e.kind) : false; });
     const dBase = base ? haversine(p.lat, p.lon, base.lat, base.lon) : Infinity;
-    const smp = entities.filter(x => x.kind === "sample" && !H.samples.includes(x.id))
+    const smp = entities.filter(x => x.provenance === "synthetic" && x.kind === "sample" && !H.samples.includes(x.id))
         .map(x => ({ entity: x, distance: Math.hypot(H.x - x.x, H.z - x.z) }))
         .filter(x => x.distance < 4.8).sort((a, b) => a.distance - b.distance)[0]?.entity;
     const station = scene.world.interactiveStations.find(s => Math.hypot(H.x - s.x, H.z - s.z) < 5.8);
-    const companion = entities.filter(e => ["rover", "astronaut", "poi"].includes(e.kind))
+    const companion = entities.filter(e => e.source === "official_science" || ["rover", "astronaut", "poi"].includes(e.kind))
         .map(e => ({ e, distance: Math.hypot(H.x - e.x, H.z - e.z) }))
         .filter(({ distance }) => distance < 10).sort((a, b) => a.distance - b.distance)[0]?.e;
     H.prompt = scene.character.nearBaseAirlock ? "base" : H.inside
@@ -303,6 +307,12 @@ async function interact(key) {
     });
   } else if (key !== "f" && H.prompt?.companion) {
     const point = H.prompt.companion;
+    if (point.source === "official_science") {
+      const records = colocatedScience(point, entities);
+      modal({ title: "Catálogo científico oficial", body: records.map((record) =>
+        "<h3>" + esc(record.name) + "</h3><p>" + esc(record.description) + "</p>" + scienceDetails(record)).join("") });
+      return;
+    }
     const data = document.createElement("div");
     data.innerHTML = `<p>${esc(point.description || "Punto de interés de entrenamiento.")}</p>
       <dl class="kv"><dt>Posición</dt><dd>${fmt.lat(point.lat)}, ${fmt.lon(point.lon)}</dd>
@@ -372,6 +382,14 @@ async function handleIntent(result) {
         return `Ruta a ${next.name}. Distancia ${fmt.m(route.metrics.distance_m)}. ${marker
             ? "Punto de no retorno a " + fmt.m(marker.distance_m) : "Retorno con reserva en todo el recorrido"}.`;
     }
+    if (intent === "poi_info") {
+        const point = H.targets.find((candidate) => candidate.id === result.poi_id);
+        if (point?.source === "official_science" && point.materials.length) {
+            const materials = point.materials.join(", ");
+            return currentLanguage() === "en" ? point.name + ". Reported materials: " + materials + "."
+                : point.name + ". Materiales citados: " + materials + ".";
+        }
+    }
     if (intent === "clear_route") {
         H.planVersion = (H.planVersion || 0) + 1;
         H.planning = false;
@@ -407,7 +425,7 @@ function setSos(on) {
 function renderHelp() {
     $("#help-body").innerHTML = `<p><b>Moverse:</b> W/S o ▲▼ avanzar/retroceder · A/D o ◀▶ girar · arrastrar para mirar.</p>
     <p><b>E</b> usar la esclusa, recolectar, hablar o inspeccionar y reparar equipos · <b>C</b> para cambiar de cámara. En vista externa, toca la escena para volver · <b>K</b> Khipu voz · <b>H</b> ayuda. Di «ruta a» y el nombre del objetivo.</p>
-    <p><b>Datos:</b> MOLA regional (463 m/px), con montes, dunas y rocas sintéticos para entrenamiento local. Consumibles: Khipu (Minetti/PLSS/Rohmert). Estamina: esfuerzo acumulado con recuperación. Entidades: escenario sintético.</p>
+    <p><b>Datos:</b> MOLA regional (463 m/px), con montes, dunas y rocas sintéticos para entrenamiento local. Consumibles: Khipu (Minetti/PLSS/Rohmert). Estamina: esfuerzo acumulado con recuperación. Los puntos NASA cercanos se pueden inspeccionar desde el visor.</p>
     <p><b>Walkback:</b> límite a pie ${walkLimit} m con reserva del 25%. Recalcular no repone O₂.</p>`;
 }
 function toggleHelp(force) {
@@ -450,7 +468,7 @@ function bind() {
         if (scene.cameraMode === "third") return;
         if (k === "h")
             toggleHelp();
-        if (k === "k")
+        if (k === "k" && !e.repeat)
             voice.start();
     });
     document.addEventListener("keyup", (e) => { const k = km[e.key.toLowerCase()]; if (k)

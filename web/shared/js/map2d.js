@@ -2,7 +2,7 @@
 // Camera in full-resolution grid cells: (cx, cy) centre, scale = screen px per cell, rot = radians.
 import { haversine } from "./geo.js";
 import { contourPath, drawLayer, hillshade } from "./raster.js";
-import { ASSET_REGISTRY, icon } from "./icons.js";
+import { ASSET_REGISTRY, markerKind, icon } from "./icons.js";
 
 const iconCache = new Map();
 function iconImage(name, color) {
@@ -211,7 +211,7 @@ export class Map2D {
   hitEntity(x, y) {
     let best = null, bd = 14;
     for (const e of this.entities) {
-      if (this.hidden.has(e.kind)) continue;
+      if (this.hidden.has(markerKind(e))) continue;
       const p = this.llToScreen(e.lat, e.lon);
       const d = Math.hypot(p.x - x, p.y - y);
       if (d < bd) { bd = d; best = e; }
@@ -265,6 +265,7 @@ export class Map2D {
     this.drawHazards(ctx);
     this.drawHalos(ctx);
     this.drawBeams(ctx);
+    this.drawRecordedTraverse(ctx);
     this.drawRoutes(ctx);
     this.drawEntities(ctx);
     if (this.opts.labels) this.drawLabels(ctx);
@@ -322,6 +323,27 @@ export class Map2D {
     }
   }
 
+  drawRecordedTraverse(ctx) {
+    if (!this.recordedPaths?.length) return;
+    ctx.save();
+    ctx.beginPath();
+    for (const path of this.recordedPaths) {
+      const first = this.llToScreen(path[0][1], path[0][0]);
+      ctx.moveTo(first.x, first.y);
+      for (const [lon, lat] of path.slice(1)) {
+        const p = this.llToScreen(lat, lon);
+        ctx.lineTo(p.x, p.y);
+      }
+    }
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = "#292034";
+    ctx.stroke();
+    ctx.lineWidth = 1.7;
+    ctx.strokeStyle = "#dcb2f2";
+    ctx.stroke();
+    ctx.restore();
+  }
+
   drawRoutes(ctx) {
     for (const rt of this.routes) {
       if (rt.visible === false || !rt.points?.length) continue;
@@ -359,10 +381,10 @@ export class Map2D {
 
   drawEntities(ctx) {
     for (const e of this.entities) {
-      if (this.hidden.has(e.kind)) continue;
+      if (this.hidden.has(markerKind(e))) continue;
       const p = this.llToScreen(e.lat, e.lon);
       if (p.x < -20 || p.y < -20 || p.x > this.w + 20 || p.y > this.h + 20) continue;
-      const reg = ASSET_REGISTRY[e.kind] || ASSET_REGISTRY.waypoint;
+      const reg = ASSET_REGISTRY[markerKind(e)] || ASSET_REGISTRY.waypoint;
       const sel = this.selection && this.selection.id === e.id;
       const rad = e.kind === "waypoint" ? 7 : 11;
       ctx.fillStyle = "rgba(11,16,13,0.88)";
@@ -399,7 +421,7 @@ export class Map2D {
       items.push({ text: t.name, lat: t.lat, lon: t.lon, prio: 10 - (t.rank ?? 2), kind: "toponym", size: t.rank === 0 ? 13 : 11 });
     }
     for (const e of this.entities) {
-      if (this.hidden.has(e.kind) || e.kind === "waypoint" && !e.name) continue;
+      if (this.hidden.has(markerKind(e)) || e.kind === "waypoint" && !e.name) continue;
       if (sc < (e.kind === "sample" ? 6 : 2.2) && !(this.selection && this.selection.id === e.id)) continue;
       items.push({ text: e.name, lat: e.lat, lon: e.lon, prio: (this.selection && this.selection.id === e.id) ? 20 : 5, kind: "entity", size: 11, dy: 22 });
     }

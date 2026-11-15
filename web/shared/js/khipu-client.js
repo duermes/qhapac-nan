@@ -43,10 +43,16 @@ export async function loadScenario() {
   return s;
 }
 
+export async function loadRecordedTraverse(regionKey) {
+  const { official } = await api.officialRoutes(regionKey);
+  return official[0]?.segments.flatMap((segment) => segment.paths) || [];
+}
+
 export function entitiesFrom(scenario, userAssets = []) {
   const ents = [];
   (scenario.assets || []).forEach((a) => ents.push({ ...a, provenance: "synthetic", source: "scenario" }));
   (scenario.pois || []).forEach((p) => ents.push({ ...p, provenance: "synthetic", source: "scenario" }));
+  ents.push(...(scenario.science_points || []));
   userAssets.forEach((a) => ents.push({ ...a, source: "user" }));
   return ents;
 }

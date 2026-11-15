@@ -27,6 +27,7 @@
     <p class="muted">Originales NASA, derivados, modelos y escenario sintético. Nada se presenta como observación si no lo es.</p>
     <section class="panel" id="kickoff"><h2>Originales registrados (manifest.json)</h2><div class="body">Cargando…</div></section>
     <section class="panel" id="regions"><h2>Regiones derivadas</h2><div class="body"></div></section>
+    <section class="panel" id="science"><h2>Catálogo científico oficial</h2><div class="body"></div></section>
     <section class="panel" id="layers"><h2>Capas analíticas</h2><div class="body"></div></section>
     <section class="panel" id="scenario"><h2>Escenario de misión</h2><div class="body"></div></section>
   </div>
@@ -49,6 +50,9 @@
         <td>${m.coverage ? (100 * m.coverage.valid_fraction).toFixed(1) + " %" : "hereda del padre"}</td></tr>`).join("")}</table>`);
       set("layers", `<table><tr><th>Capa</th><th>Clase</th><th>Unidades</th><th>Estado</th></tr>${r.layers.map((l) => `<tr><td>${esc(l.name)}<br><span class="dim">${esc(l.description)}</span></td>
         <td>${provBadge(l.provenance)}</td><td class="mono">${esc(l.units)}</td><td>${l.available ? "disponible" : `<span style="color:var(--warn)">${esc(l.unavailable_reason)}</span>`}</td></tr>`).join("")}</table>`);
+      set("science", `<table><tr><th>Fuente</th><th>Producto</th><th>Registros</th><th>Puntos en el mapa</th></tr>${r.science_sources.map((s) => `<tr>
+        <td>${esc(s.provider)}</td><td><a href="${esc(s.publication || s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a></td>
+        <td>${esc(s.records)}</td><td>${s.map_points ?? "—"}</td></tr>`).join("")}</table>`);
       set("scenario", `${provBadge(r.scenario.classification)}<p>${esc(r.scenario.label)}</p><p class="muted">${esc(r.scenario.notes)}</p>`);
     }
   </script>

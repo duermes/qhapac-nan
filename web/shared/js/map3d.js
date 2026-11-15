@@ -4,7 +4,7 @@
 // uniforms stay in sync with the camera distance.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/OrbitControls.js";
-import { ASSET_REGISTRY } from "./icons.js";
+import { ASSET_REGISTRY, markerKind } from "./icons.js";
 import { destination } from "./geo.js";
 
 export class Map3D {
@@ -176,6 +176,25 @@ export class Map3D {
     this.controls.update();
   }
 
+  setRecordedTraverse(paths) {
+    if (paths?.length && !this.recordedTraverse) {
+      const segments = [];
+      for (const path of paths) {
+        let a = this.toWorld(path[0][1], path[0][0]);
+        for (const [lon, lat] of path.slice(1)) {
+          const b = this.toWorld(lat, lon);
+          const edge = this.drapedEdge(a, b, 0.85);
+          for (let i = 1; i < edge.length; i++) segments.push(edge[i - 1], edge[i]);
+          a = b;
+        }
+      }
+      this.recordedTraverse = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(segments),
+        new THREE.LineBasicMaterial({ color: "#dcb2f2", depthWrite: false }));
+      this.overlay.add(this.recordedTraverse);
+    }
+    if (this.recordedTraverse) this.recordedTraverse.visible = Boolean(paths?.length);
+  }
+
   setRoutes(routes) {
     this.overlay.children.filter((o) => o.userData.route).forEach((o) => {
       this.overlay.remove(o);
@@ -315,8 +334,8 @@ export class Map3D {
 
   setMarkers(entities, hidden = new Set()) {
     this.labelLayer.innerHTML = "";
-    this.markers = entities.filter((e) => !hidden.has(e.kind)).map((e) => {
-      const reg = ASSET_REGISTRY[e.kind] || ASSET_REGISTRY.waypoint;
+    this.markers = entities.filter((e) => !hidden.has(markerKind(e))).map((e) => {
+      const reg = ASSET_REGISTRY[markerKind(e)] || ASSET_REGISTRY.waypoint;
       const el = document.createElement("div");
       el.className = `m3d m3d-${e.kind}`;
       el.style.cssText = `position:absolute;transform:translate(-50%,calc(-100% + 4px));font:500 11px 'Chakra Petch';color:#f3ebdc;white-space:nowrap;text-align:center`;

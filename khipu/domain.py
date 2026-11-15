@@ -14,6 +14,7 @@ from .geodesy import GridGeometry, haversine_m
 
 class Provenance(str, Enum):
     OFFICIAL_NASA = "official_nasa"
+    OFFICIAL_USGS = "official_usgs"
     DERIVED_FROM_NASA = "derived_from_nasa"
     LIVE_SERVICE = "live_service"
     CACHED = "cached"

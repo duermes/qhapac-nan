@@ -58,22 +58,26 @@ export const COLORMAPS = {
   tiers: (t) => [[63, 191, 127], [232, 200, 61], [232, 130, 40], [224, 50, 50]][Math.round(t * 3)] || [224, 50, 50],
 };
 
-export const isCategoricalLayer = (id) => id === "hazard" || id === "shadow";
+export const isCategoricalLayer = (id) => ["hazard", "shadow", "geology_usgs"].includes(id);
 
-export function renderLayer(grid, colormap, id, lo, hi) {
+export function renderLayer(grid, colormap, id, lo, hi, classes) {
   const cv = document.createElement("canvas");
   cv.width = grid.cols;
   cv.height = grid.rows;
   const ctx = cv.getContext("2d");
   const img = ctx.createImageData(grid.cols, grid.rows);
   const cm = COLORMAPS[colormap] || COLORMAPS.viridis;
+  const byCode = classes ? Object.fromEntries(classes.map(({ code, color }) => [code,
+    [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16))])) : null;
   const a = lo ?? grid.min, b = hi ?? grid.max;
   const span = b - a || 1;
   for (let i = 0; i < grid.data.length; i++) {
     const v = grid.data[i];
     if (!isFinite(v)) { img.data[4 * i + 3] = 0; continue; }
     const t = Math.max(0, Math.min(1, (v - a) / span));
-    const [r, g, bl] = cm(t);
+    const color = byCode ? byCode[Math.round(v)] : cm(t);
+    if (!color) continue;
+    const [r, g, bl] = color;
     img.data[4 * i] = r; img.data[4 * i + 1] = g; img.data[4 * i + 2] = bl;
     img.data[4 * i + 3] = 255;
   }

@@ -24,6 +24,7 @@ from .terrain import TerrainContext
 
 
 LAYER_INPUTS = {
+    "geology_usgs": ("USGS · SIM 3464 · Unidades geológicas",),
     "elevation": ("Topografía MOLA",),
     "slope": ("Topografía MOLA", "Geometría planetocéntrica"),
     "roughness": ("Topografía MOLA", "Ventana de relieve"),
@@ -80,6 +81,7 @@ class LayerDef:
     default_params: dict = field(default_factory=dict)
     compute: Callable[["LayerContext", dict], np.ndarray] | None = None
     range_hint: tuple[float, float] | None = None
+    classes: list[dict] = field(default_factory=list)
 
     def describe(self) -> dict:
         return {"id": self.id, "name": self.name, "units": self.units, "provenance": self.provenance.value,
@@ -87,7 +89,8 @@ class LayerDef:
                 "inputs": LAYER_INPUTS.get(self.id, ()), "controls": LAYER_CONTROLS.get(self.id, ()),
                 "colormap": self.colormap, "requires": self.requires, "available": self.available,
                 "unavailable_reason": self.unavailable_reason, "default_params": self.default_params,
-                "range_hint": list(self.range_hint) if self.range_hint else None}
+                "range_hint": list(self.range_hint) if self.range_hint else None,
+                **({"classes": self.classes} if self.classes else {})}
 
 
 @dataclass
@@ -384,7 +387,7 @@ def build_catalog(scenario: dict | None = None) -> dict[str, LayerDef]:
                  "Requiere mapas de hidratación/hielo (CRISM, SHARAD) y coeficientes ISRU.",
                  available=has_isru,
                  unavailable_reason=None if has_isru else
-                 "No hay datos de hidratación/hielo ni coeficientes ISRU en el manifiesto; la capa no se inventa.",
+                 "Faltan mapas cuantitativos de recursos extraíbles y coeficientes de rendimiento ISRU.",
                  colormap="science"),
     ]
     return {d.id: d for d in defs}

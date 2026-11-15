@@ -24,6 +24,7 @@ export function toast(text, kind = "", ms = 4200) {
 
 const PROV = {
   official_nasa: ["official", "NASA original"],
+  official_usgs: ["official", "USGS original"],
   derived_from_nasa: ["derived", "Derivado NASA"],
   live_service: ["live", "Servicio en vivo"],
   live: ["live", "En vivo"],
@@ -37,6 +38,39 @@ const PROV = {
 export function provBadge(p) {
   const [cls, label] = PROV[p] || ["unavailable", p || "desconocido"];
   return `<span class="badge ${cls}" data-provenance="${esc(p)}" title="Procedencia: ${esc(label)}">${esc(label)}</span>`;
+}
+
+export function scienceDetails(point) {
+  if (point.source !== "official_science") return "";
+  const asField = (label, value) => value != null && value !== ""
+    ? '<dt>' + label + '</dt><dd>' + esc(value) + '</dd>' : "";
+  return '<dl class="kv">'
+    + asField(point.category === "rover_sample" ? "Materiales citados en el informe" : "Materiales detectados", point.materials.join(", "))
+    + asField("Instrumento o misión", point.instrument)
+    + asField("Campaña", point.campaign)
+    + asField("Sol", point.sol)
+    + asField("Elevación del informe", point.reported_elevation_m == null ? null : point.reported_elevation_m + " m")
+    + asField("Registros de origen", point.record_ids?.join(", "))
+    + '</dl><a class="small" href="' + esc(point.source_url) + '" target="_blank" rel="noopener noreferrer">'
+    + esc(point.provider) + '</a>';
+}
+
+export function colocatedScience(point, entities) {
+  return point.source === "official_science" ? entities.filter((e) =>
+    e.source === point.source && e.lat === point.lat && e.lon === point.lon) : [];
+}
+
+export function colocatedScienceSelect(point, nearby) {
+  if (nearby.length < 2) return "";
+  return '<label class="label" for="same-location">Registros en esta ubicación</label><select id="same-location" class="select">'
+    + nearby.map((e) => '<option value="' + esc(e.id) + '"' + (e.id === point.id ? ' selected' : '') + '>' + esc(e.name) + '</option>').join('')
+    + '</select>';
+}
+
+export function classLegend(classes) {
+  return '<ul class="science-legend">' + classes.map((c) =>
+    '<li><span style="background:' + esc(c.color) + '"></span>'
+      + esc(c.symbol || c.label) + (c.symbol ? ' · ' + esc(c.label) : '') + '</li>').join('') + '</ul>';
 }
 
 /** Keep an absolutely positioned element inside its container. */

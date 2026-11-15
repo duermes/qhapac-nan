@@ -62,7 +62,7 @@ export function adaptiveLayers(getState, repaint) {
             const tile = await layerGrid(region, id, { ...params, ...window });
             if (current !== revision || !tile.available || !tile.decoded) return;
             details.set(id, { ...window, tileKey, key, width: window.cols, height: window.rows,
-              canvas: renderLayer(tile.decoded, tile.layer.colormap, id, ...tile.color_domain) });
+              canvas: renderLayer(tile.decoded, tile.layer.colormap, id, ...tile.color_domain, tile.layer.classes) });
             changed = true;
           } catch { /* retain the smoothed overview if the visible patch is unavailable */ }
         }));

@@ -1,7 +1,7 @@
 // Top menus (Files/Edit/View/Layers/Analysis/Tools/Help), search, focus menu and shortcuts.
 import { api } from "/static/shared/js/api.js";
 import { fmt } from "/static/shared/js/geo.js";
-import { icon } from "/static/shared/js/icons.js";
+import { icon, markerKind } from "/static/shared/js/icons.js";
 import { $, $$, esc, modal, onClickOutside, provBadge, simBanner, toast } from "/static/shared/js/ui.js";
 import { VoiceCopilot } from "/static/shared/js/voice.js";
 import { addSession, applyRealSun, closeSession, persist, refreshScene, reloadAssets, setMode, setView } from "./app.js";
@@ -21,7 +21,8 @@ const SHORTCUTS = [
 
 export function initMenus(c) {
   ctx = c;
-  const voice = new VoiceCopilot({ iface: "console", onIntent: handleIntent, button: $("#console-voice") });
+  const voice = new VoiceCopilot({ iface: "console", onIntent: handleIntent, button: $("#console-voice"),
+    points: () => ctx.entities });
   ctx.voice = voice;
   $("#console-voice").addEventListener("click", () => voice.start());
   const M = {
@@ -93,15 +94,16 @@ function resetCamera() {
 // ------------------------------------------------------------------ search
 function initSearch() {
   const inp = $("#search"), res = $("#search-results"), clr = $("#search-clear");
+  const normalize = (s) => s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
   const run = () => {
-    const q = inp.value.trim().toLowerCase();
+    const q = normalize(inp.value.trim());
     clr.hidden = !q;
     if (!q) { res.hidden = true; res.innerHTML = ""; return; }
     const items = [
-      ...(ctx.entities || []).map((e) => ({ name: e.name, sub: e.kind, lat: e.lat, lon: e.lon, ent: e })),
+      ...(ctx.entities || []).map((e) => ({ name: e.name, sub: e.provider || e.kind, lat: e.lat, lon: e.lon, ent: e })),
       ...(ctx.scenario.toponyms || []).map((t) => ({ name: t.name, sub: `topónimo · ${t.type}${t.approx ? " (aprox.)" : ""}`, lat: t.lat, lon: t.lon })),
       ...(ctx.region.focus || []).map((f) => ({ name: f.name, sub: "sector de enfoque", lat: f.center?.lat, lon: f.center?.lon, bbox: f.bbox })),
-    ].filter((x) => x.name.toLowerCase().includes(q)).slice(0, 12);
+    ].filter((x) => normalize([x.name, x.sub, ...(x.ent?.materials || [])].join(" ")).includes(q)).slice(0, 12);
     res.hidden = false;  // floating results only while searching
     res.innerHTML = items.length ? items.map((x, i) => `<button role="option" data-i="${i}">${icon(x.ent ? "pin" : "globe")}<span><b>${esc(x.name)}</b><br><span class="dim" style="font-size:11px">${esc(x.sub)}</span></span></button>`).join("")
       : `<div class="empty-state" style="padding:8px 10px">Sin resultados</div>`;
@@ -109,7 +111,8 @@ function initSearch() {
       const x = items[+b.dataset.i];
       if (x.bbox) ctx.map2d.fitBBox(x.bbox); else ctx.map2d.focusOn(x.lat, x.lon, Math.max(ctx.map2d.cam.scale, ctx.map2d.minScale * 6));
       if (ctx.map3d && ctx.cur.view === "3d") ctx.map3d.focusOn(x.lat, x.lon, 15000);
-      if (x.ent) { ctx.selection = x.ent; refreshScene(); }
+      if (x.ent?.source === "official_science") ctx.popover.openEntity(x.ent);
+      else if (x.ent) { ctx.selection = x.ent; refreshScene(); }
       clear();
     }));
   };
@@ -163,6 +166,7 @@ function initShortcuts(toggleMenubar) {
       ArrowUp: () => { m.cam.cy -= 40 / m.cam.scale; m.clampCam(); m.draw(); }, ArrowDown: () => { m.cam.cy += 40 / m.cam.scale; m.clampCam(); m.draw(); },
       Escape: () => { setAddMode(false); toggleMenubar(false); if (!$("#focus-menu").hidden) $("#focus-btn").click(); },
     };
+    if (e.repeat && k.toLowerCase() === "k") return;
     const fn = map[k] || map[k.toLowerCase()];
     if (fn) { e.preventDefault(); fn(); }
   });
@@ -174,8 +178,8 @@ function handleIntent(r) {
   if (r.intent === "set_mode") setMode({ navigate: "general", recon: "analyze", plan: "plan" }[r.mode] || "plan");
   if (["poi_info", "plan_target"].includes(r.intent)) { const e = ctx.entities.find((x) => x.id === r.poi_id); if (e) { ctx.map2d.focusOn(e.lat, e.lon); ctx.popover.openEntity(e); } }
   if (r.intent === "filter_pois") {
-    const kinds = { science: ["poi"], sample: ["sample"], vehicle: ["rover"], base: ["base", "habitat", "landmark"], hazard: ["hazard"] }[r.category];
-    const all = [...new Set(ctx.entities.map((e) => e.kind))];
+    const kinds = { science: ["poi", "orbital", "rover_sample"], sample: ["sample", "rover_sample"], vehicle: ["rover"], base: ["base", "habitat", "landmark"], hazard: ["hazard"] }[r.category];
+    const all = [...new Set(ctx.entities.map(markerKind))];
     ctx.cur.hidden = r.category === "all" ? [] : all.filter((k) => !kinds?.includes(k));
     refreshScene();
   }
@@ -197,7 +201,7 @@ async function provenanceDialog() {
     <dt>Conjunto</dt><dd>${esc(m.source?.data_set_id)}</dd><dt>Clasificación</dt><dd>${provBadge(m.classification)}</dd>
     <dt>Resolución</dt><dd>${esc(m.resolution)}</dd><dt>Unidades</dt><dd>${esc(m.units)}</dd><dt>CRS</dt><dd>${esc(m.coordinate_reference)}</dd>
     <dt>Cobertura válida</dt><dd>${fmt.pct(100 * m.coverage.valid_fraction)}</dd><dt>SHA-256 original</dt><dd style="word-break:break-all;font-size:10px">${esc(m.source?.image_sha256 || "—")}</dd></dl>
-    <hr class="joint"/><p class="muted" style="font-size:12px">Escenario (base, vehículos, astronautas, zonas, muestras): ${provBadge("synthetic")}. Capas ambientales: ${provBadge("model")}. ISRU no se muestra por falta de datos.</p>` });
+    <hr class="joint"/><p class="muted" style="font-size:12px">Escenario (base, vehículos, astronautas y zonas de exclusión): ${provBadge("synthetic")}. Capas ambientales: ${provBadge("model")}. ISRU no se muestra por falta de datos.</p>` });
 }
 
 async function demoDialog() {

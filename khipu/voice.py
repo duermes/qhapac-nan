@@ -1,4 +1,4 @@
-"""Khipu voice copilot: local rule-based intent parser (ES/EN), no AI provider.
+"""Khipu voice commands and local interpretation in Spanish and English.
 
 Returns an intent dict the UI executes. Ambiguous commands ask for clarification."""
 from __future__ import annotations
@@ -7,6 +7,7 @@ import re
 import unicodedata
 
 LAYER_ALIASES = {
+    "geology_usgs": ["geologia", "geologia usgs", "geology", "usgs geology"],
     "slope": ["pendiente", "slope", "inclinacion"],
     "elevation": ["elevacion", "altura", "altitud", "elevation", "topografia", "terrain"],
     "roughness": ["rugosidad", "relieve local", "roughness"],
@@ -137,3 +138,79 @@ def interpret(text: str, pois: list[dict] | None = None, interface: str = "conso
                                    f"Several layers match: {', '.join(layers)}. Which one should I show?")}
         return {"intent": "clarify", "speech": line("¿Qué capa quieres ver? Por ejemplo pendiente, enlace o temperatura.", "Which layer should I show? Try slope, signal or temperature.")}
     return {"intent": "unknown", "speech": line('No entendí la orden. Di "ayuda" para ver opciones.', 'I didn’t understand. Say "help" for options.')}
+
+
+_COMMON_VOICE_INTENTS = ("none", "unknown", "clarify", "help")
+_INTERFACE_VOICE_INTENTS = {
+    "console": ("select_layer", "set_mode", "poi_info", "filter_pois", "plan_target"),
+    "rover": ("select_layer", "set_mode", "poi_info", "filter_pois", "plan_target", "status", "safe_return"),
+    "hud": ("plan_target", "poi_info", "next_target", "safe_return", "clear_route", "filter_pois", "status"),
+}
+_VOICE_MODES = {"navigate": "modo navegación", "recon": "modo reconocer", "plan": "modo planificar"}
+_VOICE_FILTERS = {"science": "ciencia", "hazard": "peligro", "vehicle": "vehículos",
+                  "base": "base", "sample": "muestras", "all": "todos"}
+_VOICE_PHRASES = {"none": "", "help": "ayuda", "status": "estado", "safe_return": "retorno",
+                  "next_target": "siguiente objetivo", "clear_route": "borra ruta"}
+_EXPLICIT_EMERGENCY = {"emergencia", "emergencia eva", "alto total", "parada de emergencia",
+                       "emergency stop", "declare an emergency", "declara una emergencia"}
+
+
+def is_explicit_emergency(text):
+    return normalize(text) in _EXPLICIT_EMERGENCY
+
+
+def voice_context(interface, language, points, layers):
+    return {
+        "interface": interface,
+        "language": language,
+        "intents": [*_COMMON_VOICE_INTENTS, *_INTERFACE_VOICE_INTENTS[interface]],
+        "points": [{"id": point["id"], "name": point["name"]} for point in points],
+        "layers": layers if interface != "hud" else {},
+        "modes": list(_VOICE_MODES) if interface != "hud" else [],
+        "filters": list(_VOICE_FILTERS),
+    }
+
+
+def from_gemini(result, context, points, text=""):
+    """Turn model output into validated Khipu actions. The model supplies no operational claims."""
+    language, interface = context["language"], context["interface"]
+    transcript = result.get("transcript")
+    if not isinstance(transcript, str) or len(transcript) > 500:
+        raise ValueError("invalid transcript")
+
+    def local(command):
+        return interpret(command, points, interface, language)
+
+    def line(es, en):
+        return en if language == "en" else es
+
+    if is_explicit_emergency(text or transcript):
+        return local("emergencia")
+    intent, argument = result.get("intent"), result.get("argument")
+    if intent not in context["intents"] or not isinstance(argument, str):
+        raise ValueError("unsupported voice command")
+    if not normalize(text or transcript):
+        return local("")
+    if intent in _VOICE_PHRASES:
+        return local(_VOICE_PHRASES[intent])
+    if intent == "set_mode" and argument in _VOICE_MODES:
+        return local(_VOICE_MODES[argument])
+    if intent == "filter_pois" and argument in _VOICE_FILTERS:
+        return local(f"filtra {_VOICE_FILTERS[argument]}")
+    if intent == "select_layer" and argument in context["layers"]:
+        label = context["layers"][argument] if language == "es" else argument.replace("_", " ")
+        return {"intent": intent, "layer_id": argument, "speech": line(f"Mostrando {label}.", f"Showing {label}.")}
+    if intent in ("plan_target", "poi_info"):
+        match = next((point for point in points if point["id"] == argument), None)
+        if match:
+            name = match["name"]
+            speech = (line(f"Buscando {name}.", f"Finding {name}.") if interface == "console" else
+                      line(f"Calculando ruta a {name}.", f"Calculating a route to {name}."))
+            if intent == "poi_info":
+                speech = f"{name}. {match.get('description') or ''}".strip()
+            return {"intent": intent, "poi_id": argument, "speech": speech}
+    if intent == "unknown":
+        return {"intent": "unknown", "speech": line("No entendí la orden. Di ayuda para ver opciones.",
+                                                    "I didn’t understand the command. Say help for options.")}
+    return {"intent": "clarify", "speech": line("Repite la orden con el nombre del punto o de la capa.",
+                                                "Repeat the command with the name of the point or layer.")}

@@ -41,6 +41,7 @@ const q = (o) => {
 export const api = {
   health: () => request("GET", "/api/health"),
   regions: () => request("GET", "/api/regions"),
+  officialRoutes: (key) => request("GET", "/api/official_routes/" + encodeURIComponent(key)),
   scenario: () => request("GET", "/api/scenario"),
   terrain: (key, opts = {}) => request("GET", `/api/terrain/${encodeURIComponent(key)}${q(opts)}`),
   sample: (key, lat, lon) => request("GET", `/api/terrain/${encodeURIComponent(key)}/sample${q({ lat, lon })}`),
@@ -69,7 +70,11 @@ export const api = {
   swarm: () => request("GET", "/api/swarm/status"),
   failover: (force_out) => request("POST", "/api/swarm/failover", { force_out }),
   export: (fmt, route, name) => request("POST", `/api/export/${fmt}`, { route, name }),
-  voice: (text, iface, points = [], language = "es") => request("POST", "/api/voice/command", { text, interface: iface, points, language }),
+  voiceStatus: () => request("GET", "/api/voice/status", undefined, { timeout: 5000 }),
+  voice: (text, iface, points = [], language = "es", preferLocal = false) =>
+    request("POST", "/api/voice/command", { text, interface: iface, points, language, prefer_local: preferLocal }, { timeout: 40000 }),
+  voiceAudio: (audio, mimeType, iface, points, language) =>
+    request("POST", "/api/voice/audio", { audio, mime_type: mimeType, interface: iface, points, language }, { timeout: 40000 }),
   fsm: (snap) => request("POST", "/api/fsm/evaluate", snap),
   localization: (body) => request("POST", "/api/localization", body),
   autopilot: (body) => request("POST", "/api/autopilot/command", body),

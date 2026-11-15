@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ASSET_REGISTRY } from "/static/shared/js/icons.js";
+import { ASSET_REGISTRY, markerKind } from "/static/shared/js/icons.js";
 import { Terrain3D } from "./world.js";
 import { CharacterController } from "./character.js";
 
@@ -114,7 +114,7 @@ export class EvaScene {
   setMarkers(entities, iconFn) {
     this.labelLayer.replaceChildren();
     this.markers = entities.map(e => {
-      const reg = ASSET_REGISTRY[e.kind] || ASSET_REGISTRY.poi;
+      const reg = ASSET_REGISTRY[markerKind(e)] || ASSET_REGISTRY.poi;
       const l = this.toLocal(e.lat, e.lon);
       const el = document.createElement("div");
       el.className = "poi-label";

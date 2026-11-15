@@ -1,9 +1,9 @@
 // Smart point popover: inspection, metadata, actions and in-situ edit form.
 import { api } from "/static/shared/js/api.js";
 import { fmt } from "/static/shared/js/geo.js";
-import { ASSET_REGISTRY, icon } from "/static/shared/js/icons.js";
+import { ASSET_REGISTRY, icon, markerKind } from "/static/shared/js/icons.js";
 import { isMobile } from "/static/shared/js/khipu-client.js";
-import { $, esc, modal, onClickOutside, provBadge, toast } from "/static/shared/js/ui.js";
+import { $, colocatedScience, colocatedScienceSelect, esc, modal, scienceDetails, onClickOutside, provBadge, toast } from "/static/shared/js/ui.js";
 import { refreshScene, reloadAssets } from "./app.js";
 import { addWaypointToRoute, calculate, invalidate, setEndpoint } from "./planning.js";
 import { activeTraverse } from "./traverses.js";
@@ -88,13 +88,16 @@ function openPoint(ll, screen) {
 function openEntity(e, screen, editing = false) {
   ctx.selection = e;
   refreshScene();
-  const reg = ASSET_REGISTRY[e.kind] || ASSET_REGISTRY.waypoint;
+  const reg = ASSET_REGISTRY[markerKind(e)] || ASSET_REGISTRY.waypoint;
   const editable = e.source === "user";
   const selecting = ctx.cur.mode === "plan" && activeTraverse();
   const mobile = isMobile(e);
   const meta = Object.entries(e.metadata || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(typeof v === "object" ? JSON.stringify(v) : v)}</dd>`).join("");
+  const nearby = colocatedScience(e, ctx.entities);
   const read = `<div class="pop-body">${metaBlock(e.lat, e.lon)}
       ${e.description ? `<p style="font-size:12px;margin:8px 0 0">${esc(e.description)}</p>` : ""}
+      ${scienceDetails(e)}
+      ${colocatedScienceSelect(e, nearby)}
       ${mobile ? mobileReadout(e) : ""}
       ${meta ? `<hr class="joint"/><dl class="kv">${meta}</dl>` : ""}
       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${provBadge(e.source === "user" ? "user" : (e.provenance || "synthetic"))}${isMobile(e) ? '<span class="badge derived">móvil</span>' : '<span class="badge cached">estático</span>'}${e.locked ? `<span class="badge model">${icon("lock")} bloqueado</span>` : ""}</div></div>
@@ -114,6 +117,7 @@ function openEntity(e, screen, editing = false) {
     <button class="btn btn-icon" data-x aria-label="Cerrar">${icon("x")}</button></div>${editing ? form : read}`;
   place(screen);
   pop.querySelector("[data-x]").onclick = close;
+  pop.querySelector("#same-location")?.addEventListener("change", (ev) => openEntity(nearby.find((p) => p.id === ev.target.value), screen));
   if (editing) {
     pop.querySelector("[data-cancel]").onclick = () => openEntity(e, screen, false);
     pop.querySelector("form").addEventListener("submit", async (ev) => {
